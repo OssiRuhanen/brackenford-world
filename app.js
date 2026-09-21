@@ -35,6 +35,9 @@ let selectedGraphNode = null;
 let graphInspectorTab = "overview";
 let graphInspectorMode = "node";
 const characterLensCache = new Map();
+const characterDirectionCache = new Map();
+const characterStoryCache = new Map();
+let staticCharacterStoriesPromise = null;
 const jsonExpansionState = new Map();
 const jsonScrollState = new Map();
 const inspectorDisclosureState = new Map();
@@ -107,6 +110,25 @@ async function getCharacterLens(identity) {
   }
   return getJson(`/api/character?identity=${encodeURIComponent(identity)}`);
 }
+async function getCharacterStory(identity) {
+  if (viewerConfig.mode !== "static") {
+    return getJson(`/api/character-story?identity=${encodeURIComponent(identity)}&limit=80`);
+  }
+  if (!staticCharacterStoriesPromise) {
+    staticCharacterStoriesPromise = getJson(world.character_story_file || "data/character-stories.json");
+  }
+  const stories = await staticCharacterStoriesPromise;
+  return stories[identity] || {
+    identity, through_tick: world.tick, events: [], total_events: 0, truncated: false, limit: 80,
+    privacy: "Public authoritative events only.",
+  };
+}
+async function getCharacterDirection(identity) {
+  if (viewerConfig.mode === "static" || !world.character_direction_available) {
+    throw new Error("Character direction is available only from the loopback local viewer.");
+  }
+  return getJson(`/api/character-direction?identity=${encodeURIComponent(identity)}`);
+}
 async function getModelHealth() {
   if (viewerConfig.mode === "static" || world?.model_health_available === false) throw new Error("Engine room is available only from a loopback local viewer.");
   return getJson("/api/model-health");
@@ -174,6 +196,7 @@ function renderInspector(kind, id) {
     ui.inspector.innerHTML = `
       <h2>${escapeHtml(person.name)}</h2><p class="role">${escapeHtml(person.species ? `${title(person.species)} · ${person.role}` : person.role)}</p>
       <div class="fact-grid"><div class="fact"><span>Location</span><strong>${escapeHtml(placeName(person.current_place))}</strong></div><div class="fact"><span>Work role</span><strong>${escapeHtml(title(person.work_role || person.role))}</strong></div></div>
+      <section class="detail-section"><button type="button" class="primary" data-open-journey>Open Journey</button></section>
       <section class="detail-section"><h3>Inventory</h3>${inventory(person.inventory)}</section>
       <section class="detail-section"><h3>Skills</h3>${list(skills, ([name, value]) => `${escapeHtml(title(name))} <strong>level ${escapeHtml(value.level ?? 0)}</strong>`)}</section>
       <section class="detail-section"><h3>Attributes</h3>${tags(Object.entries(person.attributes || {}).map(([name, value]) => `${pretty(name)} ${value}`))}</section>
@@ -190,6 +213,11 @@ function renderInspector(kind, id) {
       <section class="detail-section"><h3>Buildings</h3>${list(place.buildings, building => `<strong>${escapeHtml(building.name || title(building.id))}</strong>`)}</section>
       <section class="detail-section"><h3>Active situations</h3>${list(place.situations, situation => `<strong>${escapeHtml(title(situation.template || situation.id))}</strong><br>${escapeHtml(title(situation.status))}`)}</section>`;
   }
+  ui.inspector.querySelector("[data-open-journey]")?.addEventListener("click", () => {
+    graphInspectorTab = "journey";
+    setView("graph");
+    selectGraphNode(`inhabitant:${id}`);
+  });
 }
 
 function svgElement(name, attributes = {}) {
@@ -414,8 +442,10 @@ function renderGraphInspector(node) {
   const details = Object.entries(node.detail || {});
   const projection = graphNodeProjection(node, connections);
   const projectionTreeState = jsonTreeStateKey(node, "projection");
+  const journeyAvailable = node.type === "inhabitant";
   const modelViewAvailable = node.type === "inhabitant" && world.character_lens_available;
-  if (["timeline", "model"].includes(graphInspectorTab) && !modelViewAvailable) graphInspectorTab = "overview";
+  if (graphInspectorTab === "journey" && !journeyAvailable) graphInspectorTab = "overview";
+  if (graphInspectorTab === "model" && !modelViewAvailable) graphInspectorTab = "overview";
   const selected = tab => graphInspectorTab === tab;
   const referenceButtons = (edges, direction) => edges.length ? `<div class="detail-list connection-list">${edges.map(edge => {
     const otherId = direction === "outgoing" ? edge.reference_target
@@ -432,7 +462,7 @@ function renderGraphInspector(node) {
       <button type="button" role="tab" data-inspector-tab="overview" aria-selected="${selected("overview")}" class="${selected("overview") ? "active" : ""}">Overview</button>
       <button type="button" role="tab" data-inspector-tab="json" aria-selected="${selected("json")}" class="${selected("json") ? "active" : ""}">JSON</button>
       <button type="button" role="tab" data-inspector-tab="references" aria-selected="${selected("references")}" class="${selected("references") ? "active" : ""}">References</button>
-      ${modelViewAvailable ? `<button type="button" role="tab" data-inspector-tab="timeline" aria-selected="${selected("timeline")}" class="${selected("timeline") ? "active" : ""}">Timeline</button>` : ""}
+      ${journeyAvailable ? `<button type="button" role="tab" data-inspector-tab="journey" aria-selected="${selected("journey")}" class="${selected("journey") ? "active" : ""}">Journey</button>` : ""}
       ${modelViewAvailable ? `<button type="button" role="tab" data-inspector-tab="model" aria-selected="${selected("model")}" class="${selected("model") ? "active" : ""}">Model view</button>` : ""}
     </div>
     <div role="tabpanel" class="inspector-panel" data-inspector-panel="overview" ${selected("overview") ? "" : "hidden"}>
@@ -450,7 +480,7 @@ function renderGraphInspector(node) {
       <section class="detail-section"><h3>Referenced by · ${incoming.length}</h3>${referenceButtons(incoming, "incoming")}</section>
       ${related.length ? `<section class="detail-section"><h3>Other relationships · ${related.length}</h3>${referenceButtons(related, "related")}</section>` : ""}
     </div>
-    ${modelViewAvailable ? `<div role="tabpanel" class="inspector-panel" data-inspector-panel="timeline" ${selected("timeline") ? "" : "hidden"}>${characterTimelineMarkup(node)}</div>` : ""}
+    ${journeyAvailable ? `<div role="tabpanel" class="inspector-panel" data-inspector-panel="journey" ${selected("journey") ? "" : "hidden"}>${characterJourneyMarkup(node)}</div>` : ""}
     ${modelViewAvailable ? `<div role="tabpanel" class="inspector-panel" data-inspector-panel="model" ${selected("model") ? "" : "hidden"}>${characterLensMarkup(node)}</div>` : ""}`;
   ui.inspector.querySelectorAll("[data-node]").forEach(button => button.addEventListener("click", () => selectGraphNode(button.dataset.node, true)));
   ui.inspector.querySelectorAll("[data-json-node]").forEach(button => button.addEventListener("click", () => selectGraphNode(button.dataset.jsonNode, true)));
@@ -463,42 +493,109 @@ function renderGraphInspector(node) {
   ui.inspector.querySelector("[data-copy-path]")?.addEventListener("click", event => copyInspectorText(node.path, event.currentTarget, "Path copied"));
   ui.inspector.querySelector("[data-copy-json]")?.addEventListener("click", event => copyInspectorText(JSON.stringify(projection, null, 2), event.currentTarget, "JSON copied"));
   bindCharacterLensActions(node);
-  if ((selected("timeline") || selected("model")) && !characterLensCache.has(node.ref)) loadCharacterLens(node);
+  bindCharacterDirectionActions(node);
+  bindCharacterStoryActions(node);
+  if (selected("journey") && !characterStoryCache.has(node.ref)) loadCharacterStory(node);
+  if (selected("journey") && world.character_direction_available && !characterDirectionCache.has(node.ref)) loadCharacterDirection(node);
+  if (selected("model") && modelViewAvailable && !characterLensCache.has(node.ref)) loadCharacterLens(node);
 }
 
-function characterTimelineMarkup(node) {
-  const entry = characterLensCache.get(node.ref);
+function characterGoalLabel(goal) {
+  const objective = goal?.objective || {};
+  if (objective.kind === "PRACTICE_SKILL") return `Practise ${title(objective.skill_id)}`;
+  if (objective.kind === "REACH_SKILL_LEVEL") return `Reach ${title(objective.skill_id)} level ${objective.target_level}`;
+  if (objective.kind === "CONTRIBUTE_BUILDING") return `Help complete ${title(objective.building_id)}`;
+  if (objective.kind === "REPAIR_BRIDGE") return `Repair ${title(objective.work_id || "the bridge")}`;
+  if (objective.kind === "ADOPT_SETTLEMENT_PRIORITY") return `Support ${title(objective.settlement_id)} priority ${objective.source_goal_id}`;
+  return title(objective.kind || "Recorded personal goal");
+}
+
+function characterDirectionItems(goal) {
+  const context = goal?.planning_context;
+  if (!context || goal.effective_status !== "active") return [];
+  const rows = [];
+  for (const option of context.practice_options || []) {
+    const grounding = option.grounding || {};
+    const subject = option.work_id || option.node_id || option.action_type || "practice option";
+    const location = option.location ? ` at ${placeName(option.location)}` : "";
+    rows.push(`${title(subject)}${location} · ${pretty(grounding.status || "unverified")}`);
+  }
+  if (context.skill_id) rows.push(`Build ${title(context.skill_id)} through accepted skill-bearing actions.`);
+  for (const material of context.materials || []) {
+    if (Number(material.missing_quantity || 0) > 0) rows.push(`Obtain ${material.missing_quantity} ${pretty(material.item_id)}.`);
+  }
+  const route = context.repair_route || context.building_route;
+  if (route?.next_move) rows.push(`Travel next to ${placeName(route.next_move)} toward ${placeName(route.location)}.`);
+  else if (route?.reachable_now === false) rows.push(`${placeName(route.location)} is not currently reachable.`);
+  if (context.settlement_id) rows.push(`Contribute independently to the recorded ${title(context.settlement_id)} priority.`);
+  if (context.requirements_met === true && context.can_execute_now === true) rows.push("The completion action is executable now.");
+  return rows.slice(0, 5);
+}
+
+function characterPrivateJourneyMarkup(node) {
+  if (!world.character_direction_available) {
+    return '<div class="timeline-note"><strong>Inner direction is local</strong><span>Self-authored goals and current grounded direction are available only in the loopback viewer. Public history remains available below.</span></div>';
+  }
+  const entry = characterDirectionCache.get(node.ref);
   if (!entry || entry.status === "loading") {
-    return '<div class="lens-loading"><span class="lens-spinner" aria-hidden="true"></span><p>Reading validated character events…</p></div>';
+    return '<div class="lens-loading"><span class="lens-spinner" aria-hidden="true"></span><p>Reading the character\'s current goal and direction…</p></div>';
   }
   if (entry.status === "error") {
-    return `<div class="lens-error"><strong>Timeline unavailable</strong><p>${escapeHtml(entry.message)}</p><button type="button" data-refresh-lens>Try again</button></div>`;
+    return `<div class="lens-error"><strong>Private direction unavailable</strong><p>${escapeHtml(entry.message)}</p><button type="button" data-refresh-direction>Try again</button></div>`;
   }
-  const timeline = entry.data.strategy_timeline;
-  if (timeline.status === "not_started") {
-    return '<div class="timeline-empty"><strong>Experiment not started</strong><p>No reviewed broad-ambition revision is present in this world snapshot.</p></div>';
-  }
-  if (timeline.status === "not_participant") {
-    return '<div class="timeline-empty"><strong>Not an experiment participant</strong><p>This character has no broad ambition in the reviewed revision.</p></div>';
-  }
-  const categories = Object.entries(timeline.counts || {}).sort(([left], [right]) => left.localeCompare(right));
-  const rows = timeline.events.map(event => `
-    <li class="strategy-event ${escapeHtml(event.status)}">
-      <div class="strategy-event-heading"><span>Tick ${Number(event.tick).toLocaleString()}</span><span>${escapeHtml(event.category)} · ${escapeHtml(event.status)}</span></div>
-      <p>${escapeHtml(event.summary)}</p>
-      <details><summary>${escapeHtml(event.kind)} · ${escapeHtml(event.type)}</summary><pre>${escapeHtml(JSON.stringify(event.detail, null, 2))}</pre></details>
-    </li>`).join("");
+  const directionView = entry.data;
+  const goal = directionView.personal_goal;
+  const ambition = directionView.ambition;
+  const direction = characterDirectionItems(goal);
+  const progress = goal?.progress;
+  const activeCommitments = directionView.active_commitments || [];
+  const coordinationIntentions = (directionView.public_coordination?.memberships || []).flatMap(record => {
+    const participant = record.participants?.[node.ref];
+    const commitment = participant?.commitment;
+    const rows = record.status === "open" && record.goal ? [`Participating in: ${record.goal}`] : [];
+    if (commitment?.status === "active" && commitment.text) rows.push(`Committed: ${commitment.text}`);
+    return rows;
+  });
+  const commitments = [
+    ...activeCommitments.map(item => item.request?.title || item.request?.description || item.request?.opportunity_id || "Recorded commitment"),
+    ...coordinationIntentions,
+  ];
+  const wants = [
+    ambition ? `<blockquote class="ambition-seed">${escapeHtml(ambition)}</blockquote>` : "",
+    goal ? `<div class="journey-goal"><strong>${escapeHtml(characterGoalLabel(goal))}</strong><span>${escapeHtml(title(goal.effective_status || goal.status || "unknown"))}${progress && Number.isFinite(progress.current) && Number.isFinite(progress.target) ? ` · ${Number(progress.current).toLocaleString()} / ${Number(progress.target).toLocaleString()}` : ""}</span></div>` : "",
+  ].join("");
   return `
-    <div class="timeline-note"><strong>Evidence, not an ambition score</strong><span>Validated decisions and explicit collaborative outcomes since the seed revision. No model interprets whether they are strategic.</span></div>
-    <blockquote class="ambition-seed">${escapeHtml(timeline.ambition)}</blockquote>
-    <div class="lens-meta timeline-meta">
-      <div><span>Seed tick</span><strong>${Number(timeline.from_tick).toLocaleString()}</strong></div>
-      <div><span>Evidence rows</span><strong>${Number(timeline.total_events).toLocaleString()}</strong></div>
-      <div><span>Through tick</span><strong>${Number(timeline.through_tick).toLocaleString()}</strong></div>
-    </div>
-    <div class="timeline-categories">${categories.map(([category, count]) => `<span>${escapeHtml(category)} <strong>${Number(count).toLocaleString()}</strong></span>`).join("") || '<span>No events yet</span>'}</div>
-    ${timeline.truncated ? `<p class="json-note">Showing the newest ${Number(timeline.limit).toLocaleString()} evidence rows.</p>` : ""}
-    <ol class="strategy-timeline">${rows || '<li class="timeline-empty"><p>No matching validated decisions or collaborative outcomes yet.</p></li>'}</ol>`;
+    <div class="lens-warning"><strong>Local character direction</strong><span>Goals guide attention but grant no action or guaranteed outcome. Memories, beliefs and model reasoning are not included.</span></div>
+    <section class="journey-section"><h3>What they want</h3>${wants || '<p class="muted">No active self-authored goal or reviewed broad ambition is recorded.</p>'}</section>
+    <section class="journey-section"><h3>Current direction</h3>${direction.length ? `<ul class="detail-list">${direction.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : '<p class="muted">No currently grounded next step is recorded. This does not mean the character has no interests.</p>'}</section>
+    ${commitments.length ? `<section class="journey-section"><h3>Public commitments</h3><ul class="detail-list">${commitments.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul></section>` : ""}`;
+}
+
+function characterJourneyMarkup(node) {
+  const entry = characterStoryCache.get(node.ref);
+  const privateMarkup = characterPrivateJourneyMarkup(node);
+  if (!entry || entry.status === "loading") {
+    return `${privateMarkup}<div class="lens-loading"><span class="lens-spinner" aria-hidden="true"></span><p>Reading public character milestones…</p></div>`;
+  }
+  if (entry.status === "error") {
+    return `${privateMarkup}<div class="lens-error"><strong>Public story unavailable</strong><p>${escapeHtml(entry.message)}</p><button type="button" data-refresh-story>Try again</button></div>`;
+  }
+  const story = entry.data;
+  const categories = {};
+  for (const event of story.events || []) categories[event.category] = (categories[event.category] || 0) + 1;
+  const rows = [...(story.events || [])].reverse().map(event => `
+    <li class="strategy-event recorded">
+      <div class="strategy-event-heading"><span>Tick ${Number(event.tick).toLocaleString()}</span><span>${escapeHtml(event.category)} · ${escapeHtml(event.participation)}</span></div>
+      <p>${escapeHtml(event.summary)}</p>
+      <details><summary>${escapeHtml(title(event.type))} · evidence</summary><pre>${escapeHtml(JSON.stringify({ event_id:event.event_id, actor:event.actor, detail:event.detail }, null, 2))}</pre></details>
+    </li>`).join("");
+  return `${privateMarkup}
+    <section class="journey-section"><div class="section-heading"><h3>What they have done</h3><button type="button" class="text-action" data-refresh-story>Refresh</button></div>
+      <p class="json-note">Public validated milestones through tick ${Number(story.through_tick || 0).toLocaleString()}. Routine noise and private cognition are omitted.</p>
+      <div class="timeline-categories">${Object.entries(categories).sort().map(([category, count]) => `<span>${escapeHtml(category)} <strong>${Number(count).toLocaleString()}</strong></span>`).join("") || '<span>No milestones yet</span>'}</div>
+      ${story.truncated ? `<p class="json-note">Showing the newest ${Number(story.limit).toLocaleString()} of ${Number(story.total_events).toLocaleString()} milestones.</p>` : ""}
+      <ol class="strategy-timeline">${rows || '<li class="timeline-empty"><p>No public character milestones are recorded yet.</p></li>'}</ol>
+    </section>`;
 }
 
 function characterLensMarkup(node) {
@@ -562,14 +659,42 @@ async function loadCharacterLens(node, force = false) {
   const existing = characterLensCache.get(node.ref);
   if (!force && existing) return;
   characterLensCache.set(node.ref, { status: "loading" });
-  if (selectedGraphNode === node.id && ["timeline", "model"].includes(graphInspectorTab)) renderGraphInspector(node);
+  if (selectedGraphNode === node.id && ["journey", "model"].includes(graphInspectorTab)) renderGraphInspector(node);
   try {
     const data = await getCharacterLens(node.ref);
     characterLensCache.set(node.ref, { status: "ready", data });
   } catch (error) {
     characterLensCache.set(node.ref, { status: "error", message: error.message || String(error) });
   }
-  if (selectedGraphNode === node.id && ["timeline", "model"].includes(graphInspectorTab)) renderGraphInspector(node);
+  if (selectedGraphNode === node.id && ["journey", "model"].includes(graphInspectorTab)) renderGraphInspector(node);
+}
+
+async function loadCharacterDirection(node, force = false) {
+  const existing = characterDirectionCache.get(node.ref);
+  if (!force && existing) return;
+  characterDirectionCache.set(node.ref, { status: "loading" });
+  if (selectedGraphNode === node.id && graphInspectorTab === "journey") renderGraphInspector(node);
+  try {
+    const data = await getCharacterDirection(node.ref);
+    characterDirectionCache.set(node.ref, { status: "ready", data });
+  } catch (error) {
+    characterDirectionCache.set(node.ref, { status: "error", message: error.message || String(error) });
+  }
+  if (selectedGraphNode === node.id && graphInspectorTab === "journey") renderGraphInspector(node);
+}
+
+async function loadCharacterStory(node, force = false) {
+  const existing = characterStoryCache.get(node.ref);
+  if (!force && existing) return;
+  characterStoryCache.set(node.ref, { status: "loading" });
+  if (selectedGraphNode === node.id && graphInspectorTab === "journey") renderGraphInspector(node);
+  try {
+    const data = await getCharacterStory(node.ref);
+    characterStoryCache.set(node.ref, { status: "ready", data });
+  } catch (error) {
+    characterStoryCache.set(node.ref, { status: "error", message: error.message || String(error) });
+  }
+  if (selectedGraphNode === node.id && graphInspectorTab === "journey") renderGraphInspector(node);
 }
 
 function bindCharacterLensActions(node) {
@@ -586,6 +711,14 @@ function bindCharacterLensActions(node) {
   ui.inspector.querySelectorAll("[data-copy-lens]").forEach(button => button.addEventListener("click", event => {
     copyInspectorText(values[button.dataset.copyLens], event.currentTarget, "Copied");
   }));
+}
+
+function bindCharacterStoryActions(node) {
+  ui.inspector.querySelectorAll("[data-refresh-story]").forEach(button => button.addEventListener("click", () => loadCharacterStory(node, true)));
+}
+
+function bindCharacterDirectionActions(node) {
+  ui.inspector.querySelectorAll("[data-refresh-direction]").forEach(button => button.addEventListener("click", () => loadCharacterDirection(node, true)));
 }
 
 function graphNodeProjection(node, connections) {

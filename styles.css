@@ -321,6 +321,11 @@ button.health-finding:hover, button.health-finding:focus-visible { background: #
 .timeline-note strong, .timeline-empty strong { color: var(--ink); text-transform: uppercase; letter-spacing: .07em; }
 .timeline-note span, .timeline-empty p { margin: 0; }
 .ambition-seed { margin: .7rem 0 0; padding: .65rem .8rem; color: #d8c28d; background: rgb(232 193 95 / 6%); border-left: 2px solid var(--amber-soft); font: italic .76rem/1.5 Georgia, serif; }
+.journey-section { margin-top: 1rem; }
+.journey-section > h3, .journey-section > .section-heading h3 { margin-bottom: .55rem; }
+.journey-goal { display: grid; gap: .25rem; margin-top: .65rem; padding: .7rem .8rem; background: var(--raised); border: 1px solid var(--line); border-left: 3px solid var(--amber); }
+.journey-goal strong { color: var(--ink); font-size: .78rem; }
+.journey-goal span { color: var(--muted); font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; }
 .timeline-categories { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .65rem; }
 .timeline-categories span { padding: .28rem .45rem; color: var(--muted); background: var(--raised); border: 1px solid var(--line); font-size: .66rem; text-transform: uppercase; letter-spacing: .04em; }
 .timeline-categories strong { color: var(--ink); }
