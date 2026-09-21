@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Read-only live and historical view of Brackenford's authoritative world record.">
+  <title>Brackenford World Viewer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="sigil" aria-hidden="true">B</span>
+      <div><h1>Brackenford</h1><p>World record</p></div>
+    </div>
+    <div class="world-status" aria-label="Current world status">
+      <div><span>WORLD TICK</span><strong id="world-tick">—</strong></div>
+      <div><span>EVENT HEAD</span><strong id="event-head">—</strong></div>
+      <button id="engine-room-open" class="engine-room-trigger" type="button"><span class="engine-room-dot" aria-hidden="true"></span>Engine room</button>
+      <label class="follow"><input id="live-follow" type="checkbox"><span>Follow live</span></label>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="directory" aria-label="World directory">
+      <div class="directory-heading"><span>WORLD</span><small id="world-clock">Loading…</small></div>
+      <section><h2>Inhabitants</h2><nav id="inhabitant-list" aria-label="Inhabitants"></nav></section>
+      <section><h2>Places</h2><nav id="place-list" aria-label="Places"></nav></section>
+    </aside>
+
+    <section class="chronicle" aria-label="World record views">
+      <div class="surface-tabs" role="tablist" aria-label="World record view">
+        <button id="chronicle-tab" class="surface-tab active" type="button" role="tab" aria-selected="true" aria-controls="chronicle-view">Chronicle</button>
+        <button id="graph-tab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="graph-view">World map</button>
+        <button id="logos-tab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="logos-view">Logos</button>
+        <button id="logos-lab-tab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="logos-lab-view">Logos Lab</button>
+      </div>
+
+      <div id="chronicle-view" role="tabpanel" aria-labelledby="chronicle-tab">
+        <div class="chronicle-heading">
+          <div><p class="eyebrow">AUTHORITATIVE EVENTS</p><h2 id="chronicle-title">The chronicle</h2></div>
+          <div class="replay-actions">
+            <button id="jump-live" type="button">Latest</button>
+            <button id="replay" type="button" class="primary"><span aria-hidden="true">▶</span> Replay</button>
+          </div>
+        </div>
+        <div class="scrubber">
+          <div class="range-fields">
+            <label>From tick <input id="from-tick" type="number" min="0" value="0"></label>
+            <span aria-hidden="true">→</span>
+            <label>To tick <input id="to-tick" type="number" min="0" value="0"></label>
+            <button id="show-range" type="button">Show range</button>
+          </div>
+          <input id="tick-slider" class="tick-slider" type="range" min="0" max="0" value="0" aria-label="Select world tick">
+          <div class="range-caption"><span>First record</span><output id="selected-tick">Tick —</output><span>Now</span></div>
+        </div>
+        <div id="feed-status" class="feed-status" role="status">Reading the world record…</div>
+        <ol id="event-feed" class="event-feed" aria-label="Chronological world events"></ol>
+      </div>
+
+      <div id="graph-view" class="graph-view" role="tabpanel" aria-labelledby="graph-tab" hidden>
+        <div class="graph-heading">
+          <div><p class="eyebrow">CURRENT AUTHORITATIVE STATE</p><h2>World map</h2><p class="map-caption">Routes between places · schematic spacing, not to scale · north ↑</p></div>
+          <div class="graph-actions">
+            <label class="graph-search"><span>Find node</span><input id="graph-search" type="search" placeholder="Place, person, resource…" autocomplete="off"></label>
+            <button id="graph-health" class="health-button" type="button"><span class="health-dot" aria-hidden="true"></span><span>Structure health</span><strong>—</strong></button>
+            <button id="graph-reset" type="button">Reset view</button>
+            <button id="graph-fit" type="button">Fit map</button>
+          </div>
+        </div>
+        <div class="graph-filters" id="graph-filters" aria-label="Visible node types"></div>
+        <div class="graph-stage" id="graph-stage">
+          <svg id="world-graph" viewBox="0 0 1400 900" role="img" aria-labelledby="graph-title graph-description">
+            <title id="graph-title">Current world route map</title>
+            <desc id="graph-description">Places connect to inhabitants, resources, buildings, situations and routes. Select a node to inspect its authoritative source path.</desc>
+            <g id="graph-scene"><g id="graph-edges"></g><g id="graph-nodes"></g></g>
+          </svg>
+          <div id="graph-tooltip" class="graph-tooltip" role="dialog" aria-label="Node preview" hidden></div>
+          <div class="graph-hint">Drag to pan · scroll to zoom · select a node to trace its links</div>
+        </div>
+        <div id="graph-status" class="graph-status" role="status"></div>
+      </div>
+
+      <div id="logos-view" class="automation-view" role="tabpanel" aria-labelledby="logos-tab" hidden>
+        <div class="automation-heading">
+          <div><p class="eyebrow">AUTHORITATIVE SOURCE ENGINEERING</p><h2>Logos heartbeat</h2><p>Recent scheduled decisions, selected requests and delivery lifecycle evidence.</p></div>
+          <button id="logos-refresh" type="button">Refresh</button>
+        </div>
+        <div id="logos-content" class="automation-content"><p class="muted">Reading Logos activity…</p></div>
+      </div>
+
+      <div id="logos-lab-view" class="automation-view" role="tabpanel" aria-labelledby="logos-lab-tab" hidden>
+        <div class="automation-heading">
+          <div><p class="eyebrow">REVIEW-ONLY RESEARCH</p><h2>Logos Lab</h2><p>Independent investigations, outcomes, experiments and review-only candidates.</p></div>
+          <button id="logos-lab-refresh" type="button">Refresh</button>
+        </div>
+        <div id="logos-lab-content" class="automation-content"><p class="muted">Reading Logos Lab activity…</p></div>
+      </div>
+    </section>
+
+    <aside id="inspector" class="inspector" aria-live="polite">
+      <div class="inspector-heading">
+        <span>INSPECT</span>
+        <div class="inspector-heading-actions"><small>CURRENT STATE</small><button id="inspector-expand" type="button" aria-pressed="false">Full screen</button></div>
+      </div>
+      <div id="inspector-content" class="inspector-content">
+        <p class="muted">Choose an inhabitant or place to inspect its current authoritative state.</p>
+      </div>
+      <div class="authority-note">
+        <strong>Read-only projection</strong>
+        <p>Details here come from the current authoritative snapshot. Selecting an earlier tick filters the event record; it does not invent a historical snapshot.</p>
+      </div>
+    </aside>
+  </main>
+  <dialog id="engine-room" class="engine-room" aria-labelledby="engine-room-title">
+    <div class="engine-room-heading">
+      <div><p class="eyebrow">COGNITION INFRASTRUCTURE</p><h2 id="engine-room-title">Engine room</h2></div>
+      <div class="engine-room-actions"><small id="engine-room-observed">Read-only</small><button id="engine-room-copy" type="button" disabled>Copy model brief</button><button id="engine-room-refresh" type="button">Refresh</button><button id="engine-room-close" type="button">Close</button></div>
+    </div>
+    <div id="engine-room-content" class="engine-room-content"><p class="muted">Reading current model capacity and recent route decisions…</p></div>
+  </dialog>
+  <div id="error-banner" class="error-banner" role="alert" hidden></div>
+  <script src="config.js"></script>
+  <script src="graph-layout.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
