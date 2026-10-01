@@ -10,6 +10,11 @@ const ui = {
   show: document.querySelector("#show-range"), latest: document.querySelector("#jump-live"),
   replay: document.querySelector("#replay"), follow: document.querySelector("#live-follow"),
   status: document.querySelector("#feed-status"), feed: document.querySelector("#event-feed"),
+  eventFilter: document.querySelector("#event-filter"),
+  storyTab: document.querySelector("#story-tab"), storyView: document.querySelector("#story-view"),
+  storyFeed: document.querySelector("#story-feed"), storyStatus: document.querySelector("#story-status"),
+  storyRefresh: document.querySelector("#story-refresh"), storyImportance: document.querySelector("#story-importance"),
+  storyCategory: document.querySelector("#story-category"), storyPerson: document.querySelector("#story-person"),
   error: document.querySelector("#error-banner"),
   chronicleTab: document.querySelector("#chronicle-tab"), graphTab: document.querySelector("#graph-tab"),
   logosTab: document.querySelector("#logos-tab"), logosLabTab: document.querySelector("#logos-lab-tab"),
@@ -26,6 +31,10 @@ const ui = {
   engineRoomOpen: document.querySelector("#engine-room-open"), engineRoom: document.querySelector("#engine-room"),
   engineRoomClose: document.querySelector("#engine-room-close"), engineRoomRefresh: document.querySelector("#engine-room-refresh"),
   engineRoomCopy: document.querySelector("#engine-room-copy"), engineRoomContent: document.querySelector("#engine-room-content"), engineRoomObserved: document.querySelector("#engine-room-observed"),
+  operationalHealthOpen: document.querySelector("#operational-health-open"), operationalHealth: document.querySelector("#operational-health"),
+  operationalHealthClose: document.querySelector("#operational-health-close"), operationalHealthRefresh: document.querySelector("#operational-health-refresh"),
+  operationalHealthContent: document.querySelector("#operational-health-content"), operationalHealthObserved: document.querySelector("#operational-health-observed"),
+  operationalHealthLabel: document.querySelector("#operational-health-label"),
 };
 
 let world = null;
@@ -47,11 +56,16 @@ let graphDrag = null;
 let graphFiltersInitialized = false;
 let graphTooltipHideTimer = null;
 let modelHealthSnapshot = null;
+let operationalHealthSnapshot = null;
 let modelHealthRetryTimer = null;
 let worldRefreshInFlight = false;
 let worldRenderDeferred = false;
 let logosSnapshot = null;
 let logosLabSnapshot = null;
+let storySnapshot = null;
+let eventSnapshot = null;
+let storyPreviousSeen = 0;
+const STORY_SEEN_KEY = "brackenford-world-story-sequence";
 const visibleGraphTypes = new Set();
 const defaultGraphTypes = new Set(["place"]);
 const viewerConfig = window.BRACKENFORD_VIEWER || { mode: "api" };
@@ -104,6 +118,10 @@ async function getEvents(first, last) {
   return { from_tick: first, to_tick: last, events: events.slice(0, 500), truncated, limit: 500 };
 }
 
+async function getWorldStory() {
+  return getJson(viewerConfig.mode === "static" ? (world.world_story_file || "data/world-story.json") : "/api/world-story?limit=160");
+}
+
 async function getCharacterLens(identity) {
   if (viewerConfig.mode === "static" || !world.character_lens_available) {
     throw new Error("Character lens is available only from an explicitly enabled local viewer.");
@@ -133,6 +151,10 @@ async function getModelHealth() {
   if (viewerConfig.mode === "static" || world?.model_health_available === false) throw new Error("Engine room is available only from a loopback local viewer.");
   return getJson("/api/model-health");
 }
+async function getOperationalHealth() {
+  if (viewerConfig.mode === "static" || world?.operational_health_available === false) throw new Error("Operational health is available only from a loopback local viewer.");
+  return getJson("/api/operational-health");
+}
 async function getAutomationActivity(kind) {
   if (viewerConfig.mode === "static") throw new Error("Automation activity is available only from the loopback local viewer.");
   return getJson(kind === "lab" ? "/api/logos-lab-activity" : "/api/logos-activity");
@@ -153,8 +175,10 @@ function renderWorld() {
   ui.slider.max = String(world.tick);
   ui.from.max = ui.to.max = String(world.tick);
   ui.engineRoomOpen.hidden = !world.model_health_available;
+  ui.operationalHealthOpen.hidden = !world.operational_health_available;
   ui.logosTab.hidden = !world.logos_activity_available;
   ui.logosLabTab.hidden = !world.logos_lab_activity_available;
+  if (world.operational_health_available && operationalHealthSnapshot === null) refreshOperationalHealth();
   document.querySelectorAll(".directory button").forEach(button => button.addEventListener("click", inspect));
   renderGraph();
   if (!ui.graphView.hidden) {
@@ -833,6 +857,61 @@ function engineMetric(label, value) {
   return `<div class="engine-metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
 }
 
+const incidentLifecycle = ["detected", "owned", "repairing", "awaiting activation", "recovered", "blocked", "human-review"];
+const incidentLifecycleMap = {
+  discovered: "detected", actionable: "detected", owned: "owned",
+  investigating: "repairing", repair_pending: "repairing",
+  promoted: "awaiting activation", verifying: "awaiting activation", awaiting_activation: "awaiting activation",
+  recovered: "recovered", blocked: "blocked", human_review: "human-review",
+};
+function lifecycleLabel(value) {
+  const key = String(value || "unknown").trim().toLowerCase().replaceAll("-", "_").replaceAll(" ", "_");
+  return incidentLifecycleMap[key] || (incidentLifecycle.includes(key) ? key : "unknown");
+}
+function operationalSignal(signal) {
+  const lifecycle = lifecycleLabel(signal.lifecycle || signal.incident_status || signal.status);
+  return {
+    lifecycle: signal.evidence_known === false ? "unknown" : lifecycle,
+    component: signal.responsible_component || signal.component || signal.owner || "Unknown component",
+    nextAction: signal.permitted_next_action || signal.next_action || signal.repair || "Unknown next action",
+  };
+}
+
+function renderOperationalHealth(snapshot) {
+  operationalHealthSnapshot = snapshot;
+  const status = snapshot.status || "unknown";
+  const repair = snapshot.repair || {};
+  const window = snapshot.window || {};
+  ui.operationalHealthOpen.dataset.status = status;
+  ui.operationalHealthLabel.textContent = snapshot.headline || title(status);
+  ui.operationalHealthObserved.textContent = snapshot.observed_at
+    ? `Sampled ${new Date(snapshot.observed_at).toLocaleTimeString()}` : "Observation time unknown";
+  const signals = (snapshot.signals || []).map(signal => ({ ...signal, ...operationalSignal(signal) }));
+  const overall = status === "healthy" && signals.some(signal => signal.lifecycle === "unknown") ? "unknown" : status;
+  ui.operationalHealthContent.innerHTML = `
+    <div class="operational-overview">
+      <section class="operational-card" data-status="${escapeHtml(overall)}"><span>Overall</span><strong>${escapeHtml(overall === "unknown" ? "Unknown evidence" : (snapshot.headline || title(status)))}</strong><p>Ticks ${escapeHtml(healthValue(window.tick_start))}–${escapeHtml(healthValue(window.tick_end))} · state/history ${escapeHtml(pretty(window.state_event_alignment || "unknown"))}</p></section>
+      <section class="operational-card" data-status="${escapeHtml(repair.status === "active" ? "repairing" : repair.status === "blocked" ? "broken" : "healthy")}"><span>Self-healing</span><strong>${escapeHtml(title(repair.status || "unknown"))}</strong><p>${escapeHtml(repair.detail || "Repair state is unavailable.")} Repairs may change reviewed source only through disposable validation and protected delivery; they never rewrite live world state directly.</p></section>
+    </div>
+    <div class="operational-signals">${signals.map(signal => `<article class="operational-signal" data-status="${escapeHtml(signal.lifecycle)}"><h3>${escapeHtml(signal.title || "Operational signal")}</h3><p>${escapeHtml(signal.detail || "Evidence detail is unknown.")}</p><small>Lifecycle: ${escapeHtml(signal.lifecycle)} · Responsible component: ${escapeHtml(signal.component)} · Permitted next action: ${escapeHtml(signal.nextAction)}</small></article>`).join("") || '<article class="operational-card" data-status="unknown"><strong>Unknown evidence</strong><p>No operational signal was returned by the status API.</p></article>'}</div>`;
+}
+
+async function refreshOperationalHealth() {
+  ui.operationalHealthRefresh.disabled = true;
+  try {
+    renderOperationalHealth(await getOperationalHealth());
+  } catch (error) {
+    operationalHealthSnapshot = null;
+    ui.operationalHealthOpen.dataset.status = "unknown";
+    ui.operationalHealthLabel.textContent = "Health unknown";
+    if (ui.operationalHealth.open) {
+      ui.operationalHealthContent.innerHTML = `<div class="lens-error"><strong>Operational health unavailable</strong><p>${escapeHtml(error.message || String(error))}</p></div>`;
+    }
+  } finally {
+    ui.operationalHealthRefresh.disabled = false;
+  }
+}
+
 function renderModelHealth(snapshot) {
   modelHealthSnapshot = snapshot;
   ui.engineRoomCopy.disabled = !snapshot.model_brief;
@@ -849,11 +928,19 @@ function renderModelHealth(snapshot) {
   const reason = qwen.reason ? ` · ${pretty(qwen.reason)}` : "";
   const timeline = [...(history.timeline || [])].reverse();
   const reasons = Object.entries(history.decision_reasons || {}).slice(0, 5);
+  const lunaRouteValues = [routes["hermes:gpt-6-luna"], routes["hermes:gpt-5.6-luna"]];
+  const lunaRouteCount = lunaRouteValues.some(value => value !== null && value !== undefined)
+    ? lunaRouteValues.reduce((total, value) => total + Number(value || 0), 0)
+    : null;
+  const lunaLatencyRoute = history.latency_seconds_by_route?.["hermes:gpt-6-luna"]
+    ? "hermes:gpt-6-luna"
+    : "hermes:gpt-5.6-luna";
   const historyKnown = history.status !== "world_busy";
   const historyStale = history.status === "stale";
-  const telemetryKnown = qwen.telemetry?.status === "measured";
+  const telemetryKnown = ["measured", "partial"].includes(qwen.telemetry?.status);
   const evidenceMessages = [];
   if (!telemetryKnown) evidenceMessages.push("Live Qwen health and metrics are unavailable; current load is unknown.");
+  if (qwen.telemetry?.status === "partial") evidenceMessages.push("Qwen health, slots and host memory are measured; queue depth and KV occupancy are unavailable on this backend.");
   if (current.state_evidence !== "measured") evidenceMessages.push("Capacity-state evidence is unavailable; lease and Luna budget values are unknown.");
   if (!historyKnown) evidenceMessages.push("A world turn is active. Recent route history was left unknown so this view could return immediately.");
   if (historyStale) evidenceMessages.push(`A world turn is active. Route history is the last lock-proven sample from ${new Date(history.measured_at).toLocaleTimeString()}.`);
@@ -872,7 +959,7 @@ function renderModelHealth(snapshot) {
       </dl></section>
       <span class="route-arrow" aria-hidden="true">→</span>
       <section class="route-card" data-route="qwen"><div class="route-card-heading"><h3>Qwen</h3><span>Preferred</span></div><dl>
-        <div><dt>Running requests</dt><dd>${escapeHtml(healthValue(qwen.running))} / ${escapeHtml(healthValue(limits.qwen_running_pressure))}</dd></div>
+        <div><dt>Running requests</dt><dd>${escapeHtml(healthValue(qwen.running))} / ${escapeHtml(healthValue(limits.qwen_observed_concurrency ?? limits.qwen_running_pressure))}</dd></div>
         <div><dt>Waiting requests</dt><dd>${escapeHtml(healthValue(qwen.waiting))}</dd></div>
         <div><dt>KV cache</dt><dd>${escapeHtml(healthRatio(qwen.kv_cache_ratio))} · ${escapeHtml(qwen.telemetry?.kv_cache || "unknown")}</dd></div>
         <div><dt>Memory available</dt><dd>${escapeHtml(healthBytes(qwen.memory_available_bytes))} · ${escapeHtml(qwen.telemetry?.memory || "unknown")}</dd></div>
@@ -881,11 +968,11 @@ function renderModelHealth(snapshot) {
       </dl></section>
       <span class="route-arrow" aria-hidden="true">→</span>
       <section class="route-card" data-route="luna"><div class="route-card-heading"><h3>Luna overflow</h3><span>Capacity relief</span></div><dl>
-        <div><dt>Recent routed turns</dt><dd>${escapeHtml(healthValue(routes["hermes:gpt-5.6-luna"]))}</dd></div>
+        <div><dt>Recent routed turns</dt><dd>${escapeHtml(healthValue(lunaRouteCount))}</dd></div>
         <div><dt>In flight</dt><dd>${escapeHtml(healthValue(luna.in_flight))} / ${escapeHtml(healthValue(limits.luna_in_flight))}</dd></div>
         <div><dt>Tokens available</dt><dd>${escapeHtml(healthValue(luna.tokens_available))} / ${escapeHtml(healthValue(limits.luna_bucket_capacity))}</dd></div>
         <div><dt>Token refill</dt><dd>${escapeHtml(healthValue(limits.luna_refill_per_minute))} / minute</dd></div>
-        <div><dt>Recent latency</dt><dd>${escapeHtml(latencyLabel(history, "hermes:gpt-5.6-luna"))}</dd></div>
+        <div><dt>Recent latency</dt><dd>${escapeHtml(latencyLabel(history, lunaLatencyRoute))}</dd></div>
       </dl></section>
       <span class="route-arrow" aria-hidden="true">→</span>
       <section class="route-card" data-route="observe"><div class="route-card-heading"><h3>OBSERVE fallback</h3><span>Fail closed</span></div><dl>
@@ -907,7 +994,7 @@ function renderModelHealth(snapshot) {
         <div class="engine-metrics">
           ${engineMetric("Laya routes", healthValue(routes["local:laya"]))}
           ${engineMetric("Qwen routes", healthValue(routes["local:qwen"]))}
-          ${engineMetric("Luna routes", healthValue(routes["hermes:gpt-5.6-luna"]))}
+          ${engineMetric("Luna routes", healthValue(lunaRouteCount))}
           ${engineMetric("Pressure ticks", healthValue(history.pressure_ticks))}
           ${engineMetric("Evidence", current.state_evidence || "unknown")}
         </div>
@@ -1017,6 +1104,63 @@ function centerGraphNode(nodeId) {
   window.setTimeout(() => ui.graphNodes.querySelector(`[data-id="${CSS.escape(nodeId)}"]`)?.classList.remove("match"), 1800);
 }
 
+function storySeenSequence() {
+  try { return Number(window.localStorage.getItem(STORY_SEEN_KEY)) || 0; }
+  catch (_error) { return 0; }
+}
+
+function rememberStorySequence(sequence) {
+  try { window.localStorage.setItem(STORY_SEEN_KEY, String(sequence || 0)); }
+  catch (_error) { /* Browser storage is optional presentation state. */ }
+}
+
+function storyPersonName(identity) {
+  return world?.inhabitants.find(person => person.id === identity)?.name || title(identity);
+}
+
+function renderStory() {
+  if (!storySnapshot) return;
+  const importance = ui.storyImportance.value, category = ui.storyCategory.value, person = ui.storyPerson.value;
+  const events = [...(storySnapshot.events || [])].reverse().filter(event =>
+    (importance === "all" || event.importance === importance)
+    && (category === "all" || event.category === category)
+    && (person === "all" || (event.participants || []).includes(person))
+  );
+  ui.storyFeed.innerHTML = events.map(event => `
+    <li class="story-entry" data-category="${escapeHtml(event.category)}" data-importance="${escapeHtml(event.importance)}">
+      <div class="story-entry-heading"><span>Tick ${Number(event.tick).toLocaleString()}</span><span>${escapeHtml(title(event.category))}</span></div>
+      <p>${escapeHtml(event.summary)}</p>
+      <div class="story-entry-meta">${escapeHtml((event.participants || []).map(storyPersonName).join(" · ") || storyPersonName(event.actor))} · ${escapeHtml(title(event.type))}</div>
+      <details><summary>Authoritative evidence</summary><pre>${escapeHtml(JSON.stringify({ event_id:event.event_id, sequence:event.sequence, payload:event.detail }, null, 2))}</pre></details>
+    </li>`).join("") || `<li class="empty">No milestones match these filters.</li>`;
+  const previous = storyPreviousSeen;
+  const unseen = previous ? (storySnapshot.events || []).filter(event => event.sequence > previous).length : null;
+  const oldestLoaded = storySnapshot.events?.[0]?.sequence;
+  const clippedSince = unseen !== null && storySnapshot.truncated && oldestLoaded > previous;
+  const newText = unseen === null ? " · first visit on this browser" : ` · ${clippedSince ? "at least " : ""}${unseen.toLocaleString()} new since the last visit`;
+  ui.storyStatus.textContent = `${events.length.toLocaleString()} shown · ${Number(storySnapshot.total_events || 0).toLocaleString()} milestones recorded${newText}${storySnapshot.truncated ? ` · newest ${storySnapshot.limit} loaded` : ""}`;
+}
+
+async function refreshStory() {
+  ui.storyRefresh.disabled = true;
+  ui.storyStatus.textContent = "Reading the world story…";
+  try {
+    storyPreviousSeen = storySeenSequence();
+    storySnapshot = await getWorldStory();
+    const selected = ui.storyPerson.value;
+    const names = new Map(world.inhabitants.map(person => [person.id, person.name]));
+    const participants = [...new Set((storySnapshot.events || []).flatMap(event => event.participants || []))]
+      .sort((a, b) => String(names.get(a) || title(a)).localeCompare(String(names.get(b) || title(b))));
+    ui.storyPerson.innerHTML = `<option value="all">Everyone</option>${participants.map(identity => `<option value="${escapeHtml(identity)}">${escapeHtml(names.get(identity) || title(identity))}</option>`).join("")}`;
+    if ([...ui.storyPerson.options].some(option => option.value === selected)) ui.storyPerson.value = selected;
+    renderStory();
+    rememberStorySequence(storySnapshot.through_sequence);
+    clearError();
+  } catch (error) {
+    ui.storyFeed.innerHTML = `<li class="lens-error"><strong>Story unavailable</strong><p>${escapeHtml(error.message || String(error))}</p></li>`;
+  } finally { ui.storyRefresh.disabled = false; }
+}
+
 function activityTime(value) {
   if (!value) return "Unknown time";
   const date = new Date(value);
@@ -1029,15 +1173,44 @@ function activityBadge(status) {
 
 function activityEmpty(message) { return `<div class="empty">${escapeHtml(message)}</div>`; }
 
+function requestNumber(identity) { return Number(String(identity || "").replace(/\D/g, "")) || 0; }
+
+function newestRequestFirst(left, right) {
+  const heartbeat = Number(right.latest_run?.heartbeat || -1) - Number(left.latest_run?.heartbeat || -1);
+  return heartbeat || requestNumber(right.id) - requestNumber(left.id);
+}
+
+function logosRequestCard(request) {
+  const run = request.latest_run;
+  const url = candidateUrl(run?.pull_request);
+  return `<article class="request-card" data-status="${escapeHtml(request.status)}">
+    <div class="request-card-heading"><span>${escapeHtml(request.id)} · ${escapeHtml(pretty(request.type))}</span>${activityBadge(request.status)}</div>
+    <h4>${escapeHtml(request.title)}</h4>
+    <div class="request-card-meta">${escapeHtml(title(request.priority))} priority · ${escapeHtml(title(request.lane))}${request.depends_on && request.depends_on !== "none" ? ` · depends on ${escapeHtml(request.depends_on)}` : ""}</div>
+    ${run ? `<div class="request-run"><strong>Latest evidenced heartbeat ${Number(run.heartbeat).toLocaleString()}</strong><span>${escapeHtml(activityTime(run.completed_at))} · ${escapeHtml(title(run.status))} · delivery ${escapeHtml(pretty(run.delivery_status || "not recorded"))}</span>${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Open PR</a>` : ""}</div>` : `<div class="request-run"><span>No matching heartbeat in the bounded evidence window.</span></div>`}
+  </article>`;
+}
+
 function renderLogosActivity(snapshot) {
   const runs = snapshot.runs || [];
+  const requests = [...(snapshot.requests || [])].sort(newestRequestFirst);
+  const sections = [
+    ["In progress", requests.filter(request => ["accepted", "in_progress"].includes(request.status))],
+    ["Queued next", requests.filter(request => request.status === "queued")],
+    ["Blocked", requests.filter(request => request.status === "blocked")],
+    ["Recently completed", requests.filter(request => request.status === "completed").slice(0, 12)],
+  ];
+  const counts = snapshot.request_counts || {};
   ui.logosContent.innerHTML = `
-    <div class="activity-summary">
+    <div class="activity-summary logos-summary">
       <div><span>Latest heartbeat</span><strong>${escapeHtml(snapshot.latest_heartbeat ?? "—")}</strong></div>
-      <div><span>Recent records</span><strong>${runs.length.toLocaleString()}</strong></div>
-      <p>${escapeHtml(snapshot.note || "")}</p>
+      <div><span>In progress</span><strong>${Number((counts.accepted || 0) + (counts.in_progress || 0)).toLocaleString()}</strong></div>
+      <div><span>Queued</span><strong>${Number(counts.queued || 0).toLocaleString()}</strong></div>
+      <div><span>Blocked</span><strong>${Number(counts.blocked || 0).toLocaleString()}</strong></div>
+      <p>Request status is reviewed source intent. A recent heartbeat below is separate execution evidence; neither alone proves merge or activation.</p>
     </div>
-    <div class="activity-list">${runs.map(run => {
+    <div class="request-board">${sections.map(([heading, items]) => `<section class="request-column"><h3>${escapeHtml(heading)} <span>${items.length.toLocaleString()}</span></h3><div>${items.map(logosRequestCard).join("") || activityEmpty(`No ${heading.toLowerCase()} requests.`)}</div></section>`).join("")}</div>
+    <section class="activity-section"><h3>Recent heartbeat evidence</h3><div class="activity-list">${runs.map(run => {
       const request = run.request_title || run.request || "No request selected";
       const model = run.model_invoked ? `${run.model || "model"}${run.reasoning ? ` · ${run.reasoning}` : ""}` : "No model call";
       return `<article class="activity-card" data-status="${escapeHtml(run.status)}">
@@ -1053,7 +1226,7 @@ function renderLogosActivity(snapshot) {
         ${run.influence_summary ? `<p class="activity-narrative"><strong>Sol influence</strong>${escapeHtml(run.influence_summary)}</p>` : ""}
         <div class="activity-meta">${run.source_finding_id ? `Finding ${escapeHtml(run.source_finding_id)} · ` : ""}${run.branch ? escapeHtml(run.branch) : "No candidate branch recorded"}${candidateUrl(run.pull_request) ? ` · <a href="${escapeHtml(candidateUrl(run.pull_request))}" target="_blank" rel="noreferrer">Open PR</a>` : ""}</div>
       </article>`;
-    }).join("") || activityEmpty("No Logos heartbeat evidence is available yet.")}</div>`;
+    }).join("") || activityEmpty("No Logos heartbeat evidence is available yet.")}</div></section>`;
 }
 
 function candidateUrl(value) {
@@ -1074,20 +1247,25 @@ function researchCards(records, emptyMessage) {
 
 function renderLogosLabActivity(snapshot) {
   const active = snapshot.active || [], terminal = snapshot.terminal || [], candidates = snapshot.candidates || [], runs = snapshot.runs || [];
+  const current = active.filter(item => item.status !== "blocked");
+  const blocked = active.filter(item => item.status === "blocked");
   ui.logosLabContent.innerHTML = `
     <div class="activity-summary lab-summary">
-      <div><span>Active research</span><strong>${active.length.toLocaleString()}</strong></div>
+      <div><span>Current research</span><strong>${current.length.toLocaleString()}</strong></div>
+      <div><span>Blocked</span><strong>${blocked.length.toLocaleString()}</strong></div>
       <div><span>Completed / falsified</span><strong>${terminal.length.toLocaleString()}</strong></div>
       <div><span>Review candidates</span><strong>${candidates.length.toLocaleString()}</strong></div>
       <p>${escapeHtml(snapshot.note || "")}</p>
     </div>
-    <section class="activity-section"><h3>Active investigations</h3><div class="activity-list">${researchCards(active, "No investigation is currently active.")}</div></section>
+    <section class="activity-section"><h3>Recent coordinator runs</h3><div class="run-table">${runs.map(run => `<div class="run-row"><span>${activityBadge(run.status)}<strong>${escapeHtml(run.run_id)}</strong></span><span>${escapeHtml(run.summary || run.failure || run.outcome || "No summary recorded")}</span><time>${escapeHtml(activityTime(run.completed_at || run.started_at))}</time></div>`).join("") || activityEmpty("No coordinator run is recorded.")}</div></section>
+    <section class="activity-section"><h3>Current investigations</h3><div class="activity-list">${researchCards(current, "No investigation is currently actionable.")}</div></section>
+    <section class="activity-section"><h3>Blocked investigations</h3><div class="activity-list">${researchCards(blocked, "No investigation is currently blocked.")}</div></section>
     <section class="activity-section"><h3>Research outcomes</h3><div class="activity-list">${researchCards(terminal, "No durable research outcome has been recorded yet.")}</div></section>
     <section class="activity-section"><h3>Review-only candidates</h3><div class="candidate-list">${candidates.map(candidate => {
       const url = candidateUrl(candidate.url);
       return `<article class="candidate-card"><div><span>REVIEW ONLY</span><strong>${escapeHtml(candidate.branch)}</strong></div>${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">Open PR</a>` : ""}<p>${escapeHtml(candidate.commit.slice(0, 12))} · auto-merge ${candidate.auto_merge === false ? "off" : "unknown"}</p><small>${escapeHtml((candidate.changed_paths || []).join(" · ") || "Changed paths unavailable")}</small></article>`;
     }).join("") || activityEmpty("No review-only candidate has been published.")}</div></section>
-    <section class="activity-section"><h3>Recent coordinator runs</h3><div class="run-table">${runs.map(run => `<div class="run-row"><span>${activityBadge(run.status)}<strong>${escapeHtml(run.run_id)}</strong></span><span>${escapeHtml(run.summary || run.failure || run.outcome || "No summary recorded")}</span><time>${escapeHtml(activityTime(run.completed_at || run.started_at))}</time></div>`).join("") || activityEmpty("No coordinator run is recorded.")}</div></section>`;
+    `;
 }
 
 async function refreshAutomationActivity(kind) {
@@ -1107,10 +1285,10 @@ async function refreshAutomationActivity(kind) {
 
 function setView(view) {
   const graphActive = view === "graph", logosActive = view === "logos", labActive = view === "lab";
-  const chronicleActive = !graphActive && !logosActive && !labActive;
-  ui.graphView.hidden = !graphActive; ui.chronicleView.hidden = !chronicleActive;
+  const storyActive = view === "story", chronicleActive = view === "chronicle";
+  ui.storyView.hidden = !storyActive; ui.graphView.hidden = !graphActive; ui.chronicleView.hidden = !chronicleActive;
   ui.logosView.hidden = !logosActive; ui.logosLabView.hidden = !labActive;
-  [[ui.chronicleTab, chronicleActive], [ui.graphTab, graphActive], [ui.logosTab, logosActive], [ui.logosLabTab, labActive]].forEach(([tab, active]) => {
+  [[ui.storyTab, storyActive], [ui.chronicleTab, chronicleActive], [ui.graphTab, graphActive], [ui.logosTab, logosActive], [ui.logosLabTab, labActive]].forEach(([tab, active]) => {
     tab.classList.toggle("active", active); tab.setAttribute("aria-selected", String(active));
   });
   if (graphActive) {
@@ -1124,6 +1302,9 @@ function setView(view) {
   } else if (labActive) {
     ui.inspector.innerHTML = '<p class="muted">Logos Lab is independent, review-only research. Its findings and candidates do not become authoritative until separately reviewed and delivered.</p>';
     if (!logosLabSnapshot) refreshAutomationActivity("lab");
+  } else if (storyActive) {
+    ui.inspector.innerHTML = '<p class="muted">World story contains deterministic public milestones. Routine lifecycle records and private intent are omitted; expand an entry to inspect its authoritative evidence.</p>';
+    if (!storySnapshot) refreshStory();
   } else if (selectedInspector) renderInspector(selectedInspector.kind, selectedInspector.id);
 }
 
@@ -1134,16 +1315,29 @@ async function loadEvents(first, last) {
   ui.from.value = String(first); ui.to.value = String(last); ui.slider.value = String(first);
   ui.selected.textContent = first === last ? `Tick ${first.toLocaleString()}` : `Ticks ${first.toLocaleString()}–${last.toLocaleString()}`;
   ui.status.textContent = "Reading the world record…";
-  const result = await getEvents(first, last);
-  ui.feed.innerHTML = result.events.map(event => `
+  eventSnapshot = await getEvents(first, last);
+  renderEventSnapshot();
+  clearError();
+}
+
+function eventGroup(event) {
+  if (["TICK_STARTED", "WORK_OPPORTUNITY_ADVERTISED", "WAKE_REQUESTED", "WAKE_SUPPRESSED", "ACTION_REJECTED"].includes(event.type)) return "technical";
+  if (event.actor === "world" || event.type.startsWith("SITUATION_") || event.type.startsWith("WORLD_")) return "world";
+  return "characters";
+}
+
+function renderEventSnapshot() {
+  if (!eventSnapshot) return;
+  const selected = ui.eventFilter.value;
+  const events = eventSnapshot.events.filter(event => selected === "all" || eventGroup(event) === selected);
+  ui.feed.innerHTML = events.map(event => `
     <li class="event" data-sequence="${event.sequence}">
       <div class="event-tick">TICK ${event.tick.toLocaleString()}</div>
       <div><p class="event-summary">${escapeHtml(event.summary)}</p><div class="event-meta">${escapeHtml(title(event.type))} · ${escapeHtml(event.actor)} · #${event.sequence.toLocaleString()}</div>
       <details><summary>Event evidence</summary><pre>${escapeHtml(JSON.stringify({ event_id: event.event_id, payload: event.payload }, null, 2))}</pre></details></div>
     </li>`).join("");
-  if (!result.events.length) ui.feed.innerHTML = `<li class="empty">No public world events are recorded at this tick or range.</li>`;
-  ui.status.textContent = `${result.events.length.toLocaleString()} event${result.events.length === 1 ? "" : "s"}${result.truncated ? " · first 500 shown" : ""}`;
-  clearError();
+  if (!events.length) ui.feed.innerHTML = `<li class="empty">No public world events match this tick range and filter.</li>`;
+  ui.status.textContent = `${events.length.toLocaleString()} of ${eventSnapshot.events.length.toLocaleString()} event${eventSnapshot.events.length === 1 ? "" : "s"} shown${eventSnapshot.truncated ? " · first 500 loaded" : ""}`;
 }
 
 function stopReplay() {
@@ -1183,7 +1377,11 @@ async function refreshWorld(initial = false) {
       return;
     }
     renderWorld();
-    if (initial || (ui.follow.checked && previousHead !== world.event_head.event_id)) await loadEvents(world.tick, world.tick);
+    if (initial) {
+      await Promise.all([loadEvents(world.tick, world.tick), refreshStory()]);
+    } else if (ui.follow.checked && previousHead !== world.event_head.event_id) {
+      await Promise.all([loadEvents(world.tick, world.tick), refreshStory()]);
+    }
   } finally {
     worldRefreshInFlight = false;
   }
@@ -1198,21 +1396,38 @@ ui.show.addEventListener("click", () => loadEvents(ui.from.value, ui.to.value).c
 ui.latest.addEventListener("click", () => loadEvents(world.tick, world.tick).catch(showError));
 ui.replay.addEventListener("click", replay);
 ui.follow.addEventListener("change", () => { if (ui.follow.checked) loadEvents(world.tick, world.tick).catch(showError); });
+ui.storyTab.addEventListener("click", () => setView("story"));
 ui.chronicleTab.addEventListener("click", () => setView("chronicle"));
 ui.graphTab.addEventListener("click", () => setView("graph"));
 ui.logosTab.addEventListener("click", () => setView("logos"));
 ui.logosLabTab.addEventListener("click", () => setView("lab"));
 ui.logosRefresh.addEventListener("click", () => refreshAutomationActivity("logos"));
 ui.logosLabRefresh.addEventListener("click", () => refreshAutomationActivity("lab"));
+ui.storyRefresh.addEventListener("click", () => refreshStory().catch(showError));
+ui.storyImportance.addEventListener("change", renderStory);
+ui.storyCategory.addEventListener("change", () => {
+  if (["movement", "work"].includes(ui.storyCategory.value)) ui.storyImportance.value = "all";
+  renderStory();
+});
+ui.storyPerson.addEventListener("change", renderStory);
+ui.eventFilter.addEventListener("change", renderEventSnapshot);
 ui.graphReset.addEventListener("click", () => resetGraphView());
 ui.graphFit.addEventListener("click", () => resetGraphView({ fit: true }));
 new ResizeObserver(() => applyGraphViewBox()).observe(ui.graphStage);
 ui.graphHealth.addEventListener("click", () => { graphInspectorMode = "health"; renderSchemaHealth(); });
 if (viewerConfig.mode === "static") {
+  ui.operationalHealthOpen.hidden = true;
   ui.engineRoomOpen.hidden = true;
   ui.logosTab.hidden = true;
   ui.logosLabTab.hidden = true;
 }
+ui.operationalHealthOpen.addEventListener("click", () => {
+  ui.operationalHealth.showModal();
+  refreshOperationalHealth();
+});
+ui.operationalHealthClose.addEventListener("click", () => ui.operationalHealth.close());
+ui.operationalHealthRefresh.addEventListener("click", refreshOperationalHealth);
+ui.operationalHealth.addEventListener("click", event => { if (event.target === ui.operationalHealth) ui.operationalHealth.close(); });
 ui.engineRoomOpen.addEventListener("click", () => {
   ui.engineRoom.showModal();
   refreshModelHealth();
@@ -1229,7 +1444,7 @@ ui.engineRoom.addEventListener("close", () => {
   if (worldRenderDeferred) {
     worldRenderDeferred = false;
     renderWorld();
-    if (ui.follow.checked) loadEvents(world.tick, world.tick).catch(showError);
+    if (ui.follow.checked) Promise.all([loadEvents(world.tick, world.tick), refreshStory()]).catch(showError);
   }
 });
 ui.inspectorExpand.addEventListener("click", () => {

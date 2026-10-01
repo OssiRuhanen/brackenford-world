@@ -16,6 +16,7 @@
     <div class="world-status" aria-label="Current world status">
       <div><span>WORLD TICK</span><strong id="world-tick">—</strong></div>
       <div><span>EVENT HEAD</span><strong id="event-head">—</strong></div>
+      <button id="operational-health-open" class="operational-health-trigger" type="button" data-status="unknown"><span class="operational-health-dot" aria-hidden="true"></span><span id="operational-health-label">Checking health…</span></button>
       <button id="engine-room-open" class="engine-room-trigger" type="button"><span class="engine-room-dot" aria-hidden="true"></span>Engine room</button>
       <label class="follow"><input id="live-follow" type="checkbox"><span>Follow live</span></label>
     </div>
@@ -30,20 +31,36 @@
 
     <section class="chronicle" aria-label="World record views">
       <div class="surface-tabs" role="tablist" aria-label="World record view">
-        <button id="chronicle-tab" class="surface-tab active" type="button" role="tab" aria-selected="true" aria-controls="chronicle-view">Chronicle</button>
+        <button id="story-tab" class="surface-tab active" type="button" role="tab" aria-selected="true" aria-controls="story-view">World story</button>
+        <button id="chronicle-tab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="chronicle-view">All events</button>
         <button id="graph-tab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="graph-view">World map</button>
-        <button id="logos-tab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="logos-view">Logos</button>
+        <button id="logos-tab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="logos-view">Logos work</button>
         <button id="logos-lab-tab" class="surface-tab" type="button" role="tab" aria-selected="false" aria-controls="logos-lab-view">Logos Lab</button>
       </div>
 
-      <div id="chronicle-view" role="tabpanel" aria-labelledby="chronicle-tab">
+      <div id="story-view" class="story-view" role="tabpanel" aria-labelledby="story-tab">
+        <div class="story-heading">
+          <div><p class="eyebrow">VALIDATED CHARACTER MILESTONES</p><h2>What happened in the world</h2><p>Public actions and outcomes, without routine offers, tick bookkeeping or private intent.</p></div>
+          <button id="story-refresh" type="button">Refresh</button>
+        </div>
+        <div class="story-controls">
+          <label>Show <select id="story-importance"><option value="highlight">Highlights</option><option value="all">All milestones</option></select></label>
+          <label>Kind <select id="story-category"><option value="all">Everything</option><option value="communication">Communication</option><option value="exchange">Exchange</option><option value="movement">Journeys</option><option value="work">Work &amp; making</option><option value="roles">Roles &amp; learning</option><option value="other">Other outcomes</option></select></label>
+          <label>Person <select id="story-person"><option value="all">Everyone</option></select></label>
+        </div>
+        <div id="story-status" class="story-status" role="status">Reading the world story…</div>
+        <ol id="story-feed" class="story-feed" aria-label="Recent public character milestones"></ol>
+      </div>
+
+      <div id="chronicle-view" role="tabpanel" aria-labelledby="chronicle-tab" hidden>
         <div class="chronicle-heading">
-          <div><p class="eyebrow">AUTHORITATIVE EVENTS</p><h2 id="chronicle-title">The chronicle</h2></div>
+          <div><p class="eyebrow">AUTHORITATIVE EVENTS</p><h2 id="chronicle-title">All public events</h2></div>
           <div class="replay-actions">
             <button id="jump-live" type="button">Latest</button>
             <button id="replay" type="button" class="primary"><span aria-hidden="true">▶</span> Replay</button>
           </div>
         </div>
+        <div class="event-filter"><label>Filter <select id="event-filter"><option value="all">All public events</option><option value="characters">Character events</option><option value="world">World &amp; situations</option><option value="technical">Lifecycle &amp; offers</option></select></label></div>
         <div class="scrubber">
           <div class="range-fields">
             <label>From tick <input id="from-tick" type="number" min="0" value="0"></label>
@@ -83,7 +100,7 @@
 
       <div id="logos-view" class="automation-view" role="tabpanel" aria-labelledby="logos-tab" hidden>
         <div class="automation-heading">
-          <div><p class="eyebrow">AUTHORITATIVE SOURCE ENGINEERING</p><h2>Logos heartbeat</h2><p>Recent scheduled decisions, selected requests and delivery lifecycle evidence.</p></div>
+          <div><p class="eyebrow">AUTHORITATIVE SOURCE ENGINEERING</p><h2>Logos work</h2><p>Request queue intent and recent execution/delivery evidence, kept as separate states.</p></div>
           <button id="logos-refresh" type="button">Refresh</button>
         </div>
         <div id="logos-content" class="automation-content"><p class="muted">Reading Logos activity…</p></div>
@@ -112,6 +129,13 @@
       </div>
     </aside>
   </main>
+  <dialog id="operational-health" class="engine-room operational-health" aria-labelledby="operational-health-title">
+    <div class="engine-room-heading">
+      <div><p class="eyebrow">OPERATIONAL EVIDENCE</p><h2 id="operational-health-title">System health</h2></div>
+      <div class="engine-room-actions"><small id="operational-health-observed">Read-only</small><button id="operational-health-refresh" type="button">Refresh</button><button id="operational-health-close" type="button">Close</button></div>
+    </div>
+    <div id="operational-health-content" class="engine-room-content"><p class="muted">Reading canonical operational health evidence…</p></div>
+  </dialog>
   <dialog id="engine-room" class="engine-room" aria-labelledby="engine-room-title">
     <div class="engine-room-heading">
       <div><p class="eyebrow">COGNITION INFRASTRUCTURE</p><h2 id="engine-room-title">Engine room</h2></div>
