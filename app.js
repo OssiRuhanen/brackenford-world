@@ -119,7 +119,13 @@ async function getEvents(first, last) {
 }
 
 async function getWorldStory() {
-  return getJson(viewerConfig.mode === "static" ? (world.world_story_file || "data/world-story.json") : "/api/world-story?limit=160");
+  if (viewerConfig.mode !== "static") return getJson("/api/world-story?limit=160");
+  try {
+    return await getJson(world.world_story_file || "data/world-story.json");
+  } catch (error) {
+    if (world.world_story_fallback) return world.world_story_fallback;
+    throw error;
+  }
 }
 
 async function getCharacterLens(identity) {
@@ -156,7 +162,11 @@ async function getOperationalHealth() {
   return getJson("/api/operational-health");
 }
 async function getAutomationActivity(kind) {
-  if (viewerConfig.mode === "static") throw new Error("Automation activity is available only from the loopback local viewer.");
+  if (viewerConfig.mode === "static") {
+    const file = kind === "lab" ? world.logos_lab_activity_file : world.logos_activity_file;
+    if (!file) throw new Error("A public automation snapshot is not available in this publication.");
+    return getJson(file);
+  }
   return getJson(kind === "lab" ? "/api/logos-lab-activity" : "/api/logos-activity");
 }
 function showError(error) { ui.error.textContent = error.message || String(error); ui.error.hidden = false; }
@@ -610,7 +620,7 @@ function characterJourneyMarkup(node) {
   const rows = [...(story.events || [])].reverse().map(event => `
     <li class="strategy-event recorded">
       <div class="strategy-event-heading"><span>Tick ${Number(event.tick).toLocaleString()}</span><span>${escapeHtml(event.category)} · ${escapeHtml(event.participation)}</span></div>
-      <p>${escapeHtml(event.summary)}</p>
+      <p>${escapeHtml(readableEventSummary(event))}</p>
       <details><summary>${escapeHtml(title(event.type))} · evidence</summary><pre>${escapeHtml(JSON.stringify({ event_id:event.event_id, actor:event.actor, detail:event.detail }, null, 2))}</pre></details>
     </li>`).join("");
   return `${privateMarkup}
@@ -1118,6 +1128,13 @@ function storyPersonName(identity) {
   return world?.inhabitants.find(person => person.id === identity)?.name || title(identity);
 }
 
+function readableEventSummary(event) {
+  if (event?.type !== "SPEAK") return event?.summary || "";
+  const payload = event.payload || event.detail || {};
+  const target = payload.target ? ` to ${storyPersonName(payload.target)}` : "";
+  return `${storyPersonName(event.actor)} said${target}: “${payload.text || ""}”`;
+}
+
 function renderStory() {
   if (!storySnapshot) return;
   const importance = ui.storyImportance.value, category = ui.storyCategory.value, person = ui.storyPerson.value;
@@ -1129,7 +1146,7 @@ function renderStory() {
   ui.storyFeed.innerHTML = events.map(event => `
     <li class="story-entry" data-category="${escapeHtml(event.category)}" data-importance="${escapeHtml(event.importance)}">
       <div class="story-entry-heading"><span>Tick ${Number(event.tick).toLocaleString()}</span><span>${escapeHtml(title(event.category))}</span></div>
-      <p>${escapeHtml(event.summary)}</p>
+      <p>${escapeHtml(readableEventSummary(event))}</p>
       <div class="story-entry-meta">${escapeHtml((event.participants || []).map(storyPersonName).join(" · ") || storyPersonName(event.actor))} · ${escapeHtml(title(event.type))}</div>
       <details><summary>Authoritative evidence</summary><pre>${escapeHtml(JSON.stringify({ event_id:event.event_id, sequence:event.sequence, payload:event.detail }, null, 2))}</pre></details>
     </li>`).join("") || `<li class="empty">No milestones match these filters.</li>`;
@@ -1193,6 +1210,7 @@ function logosRequestCard(request) {
 
 function renderLogosActivity(snapshot) {
   const runs = snapshot.runs || [];
+  const publicStatic = snapshot.visibility === "public-static";
   const requests = [...(snapshot.requests || [])].sort(newestRequestFirst);
   const sections = [
     ["In progress", requests.filter(request => ["accepted", "in_progress"].includes(request.status))],
@@ -1218,13 +1236,12 @@ function renderLogosActivity(snapshot) {
         <dl class="activity-facts">
           <div><dt>Decision</dt><dd>${escapeHtml(pretty(run.decision || "unknown"))}</dd></div>
           <div><dt>Lane</dt><dd>${escapeHtml(pretty(run.lane || "none"))}</dd></div>
-          <div><dt>Model</dt><dd>${escapeHtml(model)}</dd></div>
+          ${publicStatic ? "" : `<div><dt>Model</dt><dd>${escapeHtml(model)}</dd></div>`}
           <div><dt>Delivery</dt><dd>${escapeHtml(pretty(run.delivery_status || "not recorded"))}</dd></div>
           <div><dt>Started</dt><dd>${escapeHtml(activityTime(run.started_at))}</dd></div>
           <div><dt>Completed</dt><dd>${escapeHtml(activityTime(run.completed_at))}</dd></div>
         </dl>
-        ${run.influence_summary ? `<p class="activity-narrative"><strong>Sol influence</strong>${escapeHtml(run.influence_summary)}</p>` : ""}
-        <div class="activity-meta">${run.source_finding_id ? `Finding ${escapeHtml(run.source_finding_id)} · ` : ""}${run.branch ? escapeHtml(run.branch) : "No candidate branch recorded"}${candidateUrl(run.pull_request) ? ` · <a href="${escapeHtml(candidateUrl(run.pull_request))}" target="_blank" rel="noreferrer">Open PR</a>` : ""}</div>
+        ${publicStatic ? "" : `${run.influence_summary ? `<p class="activity-narrative"><strong>Sol influence</strong>${escapeHtml(run.influence_summary)}</p>` : ""}<div class="activity-meta">${run.source_finding_id ? `Finding ${escapeHtml(run.source_finding_id)} · ` : ""}${run.branch ? escapeHtml(run.branch) : "No candidate branch recorded"}${candidateUrl(run.pull_request) ? ` · <a href="${escapeHtml(candidateUrl(run.pull_request))}" target="_blank" rel="noreferrer">Open PR</a>` : ""}</div>`}
       </article>`;
     }).join("") || activityEmpty("No Logos heartbeat evidence is available yet.")}</div></section>`;
 }
@@ -1333,7 +1350,7 @@ function renderEventSnapshot() {
   ui.feed.innerHTML = events.map(event => `
     <li class="event" data-sequence="${event.sequence}">
       <div class="event-tick">TICK ${event.tick.toLocaleString()}</div>
-      <div><p class="event-summary">${escapeHtml(event.summary)}</p><div class="event-meta">${escapeHtml(title(event.type))} · ${escapeHtml(event.actor)} · #${event.sequence.toLocaleString()}</div>
+      <div><p class="event-summary">${escapeHtml(readableEventSummary(event))}</p><div class="event-meta">${escapeHtml(title(event.type))} · ${escapeHtml(storyPersonName(event.actor))} · #${event.sequence.toLocaleString()}</div>
       <details><summary>Event evidence</summary><pre>${escapeHtml(JSON.stringify({ event_id: event.event_id, payload: event.payload }, null, 2))}</pre></details></div>
     </li>`).join("");
   if (!events.length) ui.feed.innerHTML = `<li class="empty">No public world events match this tick range and filter.</li>`;
@@ -1418,8 +1435,6 @@ ui.graphHealth.addEventListener("click", () => { graphInspectorMode = "health"; 
 if (viewerConfig.mode === "static") {
   ui.operationalHealthOpen.hidden = true;
   ui.engineRoomOpen.hidden = true;
-  ui.logosTab.hidden = true;
-  ui.logosLabTab.hidden = true;
 }
 ui.operationalHealthOpen.addEventListener("click", () => {
   ui.operationalHealth.showModal();
