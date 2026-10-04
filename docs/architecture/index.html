@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Opas pysyvän tekoälymaailman rakenteeseen, toimintaan ja omiin kokeiluihin.">
+  <title>Arkkitehtuuri · Agentic World</title>
+  <link rel="canonical" href="https://ossiruhanen.github.io/brackenford-world/docs/architecture/">
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Siirry sisältöön</a>
+  <header class="site-header">
+    <a class="brand" href="..">
+      <img src="../assets/favicon.svg" width="36" height="36" alt="">
+      <span>Agentic World<small>Projektin opas</small></span>
+    </a>
+    <a class="world-link" href="https://ossiruhanen.github.io/brackenford-world/">Katso maailmaa <span aria-hidden="true">↗</span></a>
+  </header>
+  <div class="page-layout">
+    <aside class="sidebar">
+      <nav aria-label="Oppaan luvut">
+        <p class="nav-label">Lue ja kokeile</p>
+        <ol class="chapter-list">
+          <li><a href="..">
+            <span class="chapter-number" aria-hidden="true">01</span>Kokonaiskuva
+          </a></li>
+          <li><a href="./" aria-current="page">
+            <span class="chapter-number" aria-hidden="true">02</span>Arkkitehtuuri
+          </a></li>
+          <li><a href="../experiments/">
+            <span class="chapter-number" aria-hidden="true">03</span>Oma kokeilu
+          </a></li>
+          <li><a href="../rebuild/">
+            <span class="chapter-number" aria-hidden="true">04</span>Oma toteutus
+          </a></li>
+        </ol>
+      </nav>
+      <div class="sidebar-note">
+        <p>Yleiskuva ensin.<br>Tarkemmat sopimukset lähdekoodissa ja teknisissä oppaissa.</p>
+        <a href="https://github.com/OssiRuhanen/The-many-remembered">Lähdekoodi GitHubissa ↗</a>
+        <small>Edellyttää repositorion käyttöoikeutta.</small>
+      </div>
+    </aside>
+    <main id="content" tabindex="-1">
+      <p class="page-label">Agentic World / Arkkitehtuuri</p>
+      <article><h1 id="miten-maailma-toimii">Miten maailma toimii?<a class="headerlink" href="#miten-maailma-toimii" title="Linkki tähän kohtaan">#</a></h1>
+<p>Arkkitehtuurin keskeinen raja kulkee <strong>ehdotuksen ja toteutuneen tapahtuman</strong>
+välillä. Hahmon teksti, aikomus tai muisto ei saa samaa asemaa kuin moottorin
+hyväksymä muutos.</p>
+<h2 id="yhden-teon-reitti">Yhden teon reitti<a class="headerlink" href="#yhden-teon-reitti" title="Linkki tähän kohtaan">#</a></h2>
+<p><img alt="Maailman tila tuottaa hahmolle rajatun näkymän. Malli ehdottaa tekoa, jonka WorldStore validoi. Hyväksytty teko päivittää tilaa ja jättää tapahtumatodisteen. Näkymät muodostetaan tallennetusta tiedosta." src="../assets/action-flow.svg" /></p>
+<ol>
+<li><strong>Ajastaja valitsee vuoron.</strong> Maailman istunto etenee tikeissä eli maailman
+   aika-askelissa. Tikillä ja kuluneella seinäkelloajalla on eri merkitys.</li>
+<li><strong>Hahmolle muodostetaan näkymä.</strong> <code>WorldStore.agent_view()</code> kokoaa hahmon
+   tilanteen, sille näkyvät asiat, rajattua muistia ja nykyisiä
+   toimintamahdollisuuksia. Hahmo ei saa kaikkien muiden yksityistä tietoa.</li>
+<li><strong>Adapteri kutsuu mallia.</strong> Malli saa identiteetin, näkymän ja toimintojen
+   muotovaatimukset. Sen vastaus on rakenteinen ehdotus, esimerkiksi <code>MOVE</code>.</li>
+<li><strong>Moottori tarkistaa ehdotuksen.</strong> <code>WorldStore.apply_action()</code> tarkistaa
+   nykyisen tilan, oikeudet ja teon ehdot. Näkymässä aiemmin tarjottu teko voi
+   ehtiä muuttua mahdottomaksi ennen tätä tarkistusta.</li>
+<li><strong>Tulos tallennetaan.</strong> Hyväksytty teko vaikuttaa sääntöjensä mukaisesti.
+   Hylkäys jättää hylkäystodisteen; ehdotettua vaikutusta ei hyväksytä vain
+   siksi, että malli kertoi sen tapahtuneen.</li>
+<li><strong>Seuraava näkymä perustuu tulokseen.</strong> Asukkaiden myöhemmät havainnot,
+   julkinen katselin ja koosteet käyttävät niille sallittua osaa tiedosta.</li>
+</ol>
+<p>Esimerkiksi kaksi asukasta voi nähdä saman viimeisen materiaalin. Molemmat
+voivat ehdottaa sen ottamista, mutta jokainen teko tarkistetaan uudelleen
+vuorollaan. Ensimmäisen onnistuminen voi tehdä jälkimmäisen ehdotuksesta
+virheellisen. Pelkkä aiempi havainto ei varaa materiaalia.</p>
+<h2 id="samanaikainen-ajattelu-hallittu-tilan-muuttaminen">Samanaikainen ajattelu, hallittu tilan muuttaminen<a class="headerlink" href="#samanaikainen-ajattelu-hallittu-tilan-muuttaminen" title="Linkki tähän kohtaan">#</a></h2>
+<p><code>world_session.py</code>:n oletus on antaa tikin alussa jäädytetyn aktiivisen
+asukasjoukon jokaiselle jäsenelle tavallinen toimintayritys, ellei kirjattu
+poikkeus estä vuoroa. Päätöksentekoa ryhmitellään asutusten ja sijaintien mukaan.
+Mallikutsuja voidaan tehdä rinnakkain, mutta ehdotukset käsitellään
+määrätyssä järjestyksessä maailman yhteisen kirjoituslukon kautta.</p>
+<p>Yksi kierros ei ole yksi jakamaton tietokantatapahtuma. Keskeytys voi jättää
+osan teoista toteutuneiksi. Ajo kirjaa erikseen suunnitellun vuorojoukon,
+yritykset, lykkäykset ja koko kierroksen valmistumisen. Puuttuva
+valmistumismerkintä ei ole onnistunut kierros. Mallivirhe ja tilan
+tallennusvirhe ovat eri tilanteita: mallivirhe voi tuottaa kirjatun
+<code>OBSERVE</code>-varatoiminnon, kun taas ajonaikainen eheysvirhe pysäyttää ajon.</p>
+<h2 id="mita-tietoa-sailytetaan">Mitä tietoa säilytetään?<a class="headerlink" href="#mita-tietoa-sailytetaan" title="Linkki tähän kohtaan">#</a></h2>
+<p>Kaikki alla olevat suhteelliset datapolut tarkoittavat ajolle erikseen valittua
+maailman datakansiota.</p>
+<table>
+<thead>
+<tr>
+<th>Tietokerros</th>
+<th>Merkitys</th>
+<th>Polku tai lukija</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Vahvistettu nykytila</td>
+<td>Missä asukkaat ovat, mitä he omistavat ja missä tilassa maailma on.</td>
+<td><code>state/authoritative_state.json</code></td>
+</tr>
+<tr>
+<td>Tapahtumahistoria</td>
+<td>Moottorin kirjaamat teot, tulokset ja muut maailman tapahtumat.</td>
+<td><code>state/events.jsonl</code></td>
+</tr>
+<tr>
+<td>Muistot ja uskomukset</td>
+<td>Hahmon oma kokemus ja tulkinta; voivat erota maailman tosiasioista.</td>
+<td><code>state/memories/</code>, <code>state/beliefs/</code></td>
+</tr>
+<tr>
+<td>Yksityiset vuorotallenteet</td>
+<td>Mitä hahmolle näytettiin ja miten sen vuoro päättyi.</td>
+<td><code>logs/character-replay/frames.sqlite3</code></td>
+</tr>
+<tr>
+<td>Julkiset näkymät</td>
+<td>Sallituista tiedoista johdetut kartat, tapahtumalistat ja koosteet.</td>
+<td><code>engine/world_view_projection.py</code>, <code>public/</code>, katselimen vienti</td>
+</tr>
+<tr>
+<td>Käytön seuranta</td>
+<td>Esimerkiksi mallikutsujen, ajon ja kehitysautomaation toimintahavainnot.</td>
+<td>Operatiiviset lokit ja health-työkalut</td>
+</tr>
+<tr>
+<td>Suunnitteluaineisto</td>
+<td>Ideat, raportit ja kokeiden tulokset.</td>
+<td><code>world/workshop/</code>, Logos- ja tutkimusaineisto</td>
+</tr>
+</tbody>
+</table>
+<p>Nykytila ja tapahtumahistoria ovat yhteinen, tarkistettava kokonaisuus.
+Tämä kuvaus <strong>ei lupaa</strong>, että koko nykymaailman voisi rakentaa uudelleen
+toistamalla pelkän tapahtumalokin. Julkinen katselin tai sen JSON-vienti ei
+myöskään ole maailman täydellinen varmuuskopio.</p>
+<h2 id="lahdekoodi-sisalto-ja-ajettava-maailma">Lähdekoodi, sisältö ja ajettava maailma<a class="headerlink" href="#lahdekoodi-sisalto-ja-ajettava-maailma" title="Linkki tähän kohtaan">#</a></h2>
+<p><strong>Lähdekoodi</strong> kertoo, millä säännöillä maailma toimii. <strong>Sisältö</strong> määrittelee
+näiden sääntöjen käyttämät paikat, reseptit, hahmojen lähtökohdat ja muut
+maailmakohtaiset asiat. <strong>Ajettava data</strong> kertoo, mitä tietyssä maailmassa on
+jo tapahtunut.</p>
+<p><code>--root</code> valitsee datakansion; se ei valitse Python-lähdekoodia. Samasta
+lähdekoodiversiosta voi luoda monta erillistä kokeilumaailmaa. Repossa mukana
+olevat historialliset <code>state/</code>-tiedostot eivät automaattisesti ole nykyinen
+käynnissä oleva maailma.</p>
+<p>Toteutuksessa <code>engine/</code> sisältää lait ja tilasiirtymät, <code>scripts/</code> niiden
+ajajat ja adapterit. Sisältöä lisätään ensisijaisesti dataan. Vanhemmat
+alustusluettelot ovat osin <code>engine/world_defaults.py</code>:ssä. <code>WorldStore</code> on
+edelleen tilamuutosten yhteinen rajapinta, vaikka laskentaa on jaettu muihin
+moduuleihin.</p>
+<h2 id="malli-on-vaihdettava-paatoksentekija">Malli on vaihdettava päätöksentekijä<a class="headerlink" href="#malli-on-vaihdettava-paatoksentekija" title="Linkki tähän kohtaan">#</a></h2>
+<p>Ajajilla on adapterit muun muassa Hermes-kutsuille, paikalliselle Qwen-reitille
+ja OpenChara-istunnoille. Toteutuksessa on myös Laya-pohjaista reititystä.
+Käytettävissä olevat reitit riippuvat hahmon asetuksista ja erikseen
+asennetuista palveluista; repo ei sisällä mallipainoja tai kirjautumisia.</p>
+<p>Mallin vaihtaminen voi muuttaa päätösten laatua, nopeutta ja kustannusta. Se ei
+saa muuttaa teon hyväksymisehtoja. Mallivertailussa kannattaa pitää
+lähtömaailma, toimintojen sopimus ja mittarit samoina ja tallentaa käytetty
+malli sekä sen asetukset.</p>
+<h2 id="kehitys-on-toinen-kierto">Kehitys on toinen kierto<a class="headerlink" href="#kehitys-on-toinen-kierto" title="Linkki tähän kohtaan">#</a></h2>
+<pre><code class="language-text">Maailman havainnot tai ihmisen kehityspyyntö
+    → rajattu koodimuutos erillisessä työtilassa
+    → kohdennetut testit ja lähdekoodin tarkistus
+    → pull request ja suojatun jonon täydet tarkistukset
+    → hyväksytty lähdekoodiversio
+    → erillinen käyttöönotto tavallisen käynnistyksen yhteydessä
+</code></pre>
+<p>Logos toimii tällä kehityspuolella. Sol ja scoutit voivat antaa sille
+arvioita ja ehdotuksia. Valinnainen Logos Lab tutkii vaihtoehtoja erillisessä
+ympäristössä. Nämä eivät ole asukkaiden toimintavuoroja.</p>
+<p>Koodimuutoksen hyväksyminen ja sen ajaminen ovat eri asioita. Sama koskee
+dokumentaation julkaisemista, katselimen päivittämistä ja maailman uuden
+version käynnistymistä: yhden onnistuminen ei todista muita.</p>
+<h2 id="mista-tarkemmat-sopimukset-loytyvat">Mistä tarkemmat sopimukset löytyvät?<a class="headerlink" href="#mista-tarkemmat-sopimukset-loytyvat" title="Linkki tähän kohtaan">#</a></h2>
+<p>Lähdekoodin käyttöoikeuden kanssa pääset seuraaviin englanninkielisiin oppaisiin:</p>
+<ul>
+<li><a href="https://github.com/OssiRuhanen/The-many-remembered/blob/master/docs/architecture.md">Tekninen arkkitehtuuri</a>: moduulirajat ja muutosten sijoittaminen.</li>
+<li><a href="https://github.com/OssiRuhanen/The-many-remembered/blob/master/docs/world-runtime-guide.md">Maailman ajo</a>: vuorot, rinnakkaisuus ja virhetilanteet.</li>
+<li><a href="https://github.com/OssiRuhanen/The-many-remembered/blob/master/docs/evidence-namespaces.md">Tiedon eri merkitykset</a>: tilan, muistojen ja koosteiden rajat.</li>
+<li><a href="https://github.com/OssiRuhanen/The-many-remembered/blob/master/docs/runtime-source-map.md">Asennuksen lähdekartta</a>: lähdekoodin valinta ja käyttöönoton todisteet.</li>
+<li><a href="https://github.com/OssiRuhanen/The-many-remembered/blob/master/docs/automation-roles.md">Automaation vastuut</a>: mikä toimija saa tehdä mitäkin.</li>
+</ul></article>
+      <nav class="page-turn" aria-label="Edellinen ja seuraava luku">
+        <a href=".."><small>← Edellinen</small>Kokonaiskuva</a><a href="../experiments/"><small>Seuraava →</small>Oma kokeilu</a>
+      </nav>
+    </main>
+    <aside class="contents" aria-label="Tämän sivun sisältö">
+      <p class="nav-label">Tällä sivulla</p>
+      <ul><li><a href="#yhden-teon-reitti">Yhden teon reitti</a></li><li><a href="#samanaikainen-ajattelu-hallittu-tilan-muuttaminen">Samanaikainen ajattelu, hallittu tilan muuttaminen</a></li><li><a href="#mita-tietoa-sailytetaan">Mitä tietoa säilytetään?</a></li><li><a href="#lahdekoodi-sisalto-ja-ajettava-maailma">Lähdekoodi, sisältö ja ajettava maailma</a></li><li><a href="#malli-on-vaihdettava-paatoksentekija">Malli on vaihdettava päätöksentekijä</a></li><li><a href="#kehitys-on-toinen-kierto">Kehitys on toinen kierto</a></li><li><a href="#mista-tarkemmat-sopimukset-loytyvat">Mistä tarkemmat sopimukset löytyvät?</a></li>
+      </ul>
+    </aside>
+  </div>
+  <footer class="site-footer"><span>Agentic World · Brackenford</span><span>Arkkitehtuuri ja kokeilut</span></footer>
+</body>
+</html>

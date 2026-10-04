@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 480" role="img" aria-labelledby="title description">
+  <title id="title">Ehdotuksesta maailman tapahtumaksi</title>
+  <desc id="description">Tila tuottaa hahmolle rajatun näkymän. Malli antaa tekoehdotuksen. WorldStore validoi sen, tallentaa tuloksen ja muodostaa tiedosta seuraavat näkymät.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="m0 0 10 5-10 5z" fill="#56715e"/></marker></defs>
+  <rect x="1" y="1" width="398" height="478" rx="12" fill="#edf1e8" stroke="#d9dfd5"/>
+  <g font-family="system-ui,sans-serif" fill="#202f29" text-anchor="middle">
+    <rect x="18" y="36" width="364" height="70" rx="6" fill="#fff"/>
+    <text x="200" y="65" font-size="22" font-weight="600">Maailman tila</text>
+    <text x="200" y="91" font-size="20">→ hahmon rajattu näkymä</text>
+    <path d="M200 108v29" stroke="#56715e" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="18" y="143" width="364" height="70" rx="6" fill="#fff"/>
+    <text x="200" y="172" font-size="22" font-weight="600">Malli</text>
+    <text x="200" y="198" font-size="20">→ rakenteinen tekoehdotus</text>
+    <path d="M200 215v29" stroke="#56715e" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="18" y="250" width="364" height="76" rx="6" fill="#235b46"/>
+    <text x="200" y="281" font-size="22" font-weight="600" fill="#fff">WorldStore</text>
+    <text x="200" y="309" font-size="20" fill="#fff">Tarkistus → hyväksyntä tai hylkäys</text>
+    <path d="M200 328v29" stroke="#56715e" stroke-width="2" marker-end="url(#arrow)"/>
+    <rect x="18" y="363" width="364" height="78" rx="6" fill="#fff"/>
+    <text x="200" y="393" font-size="22" font-weight="600">Tila ja tapahtumat</text>
+    <text x="200" y="421" font-size="20">Seuraava näkymä ja koosteet</text>
+  </g>
+</svg>

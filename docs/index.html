@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Opas pysyvän tekoälymaailman rakenteeseen, toimintaan ja omiin kokeiluihin.">
+  <title>Kokonaiskuva · Agentic World</title>
+  <link rel="canonical" href="https://ossiruhanen.github.io/brackenford-world/docs/">
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+  <link rel="stylesheet" href="assets/guide.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Siirry sisältöön</a>
+  <header class="site-header">
+    <a class="brand" href=".">
+      <img src="assets/favicon.svg" width="36" height="36" alt="">
+      <span>Agentic World<small>Projektin opas</small></span>
+    </a>
+    <a class="world-link" href="https://ossiruhanen.github.io/brackenford-world/">Katso maailmaa <span aria-hidden="true">↗</span></a>
+  </header>
+  <div class="page-layout">
+    <aside class="sidebar">
+      <nav aria-label="Oppaan luvut">
+        <p class="nav-label">Lue ja kokeile</p>
+        <ol class="chapter-list">
+          <li><a href="." aria-current="page">
+            <span class="chapter-number" aria-hidden="true">01</span>Kokonaiskuva
+          </a></li>
+          <li><a href="architecture/">
+            <span class="chapter-number" aria-hidden="true">02</span>Arkkitehtuuri
+          </a></li>
+          <li><a href="experiments/">
+            <span class="chapter-number" aria-hidden="true">03</span>Oma kokeilu
+          </a></li>
+          <li><a href="rebuild/">
+            <span class="chapter-number" aria-hidden="true">04</span>Oma toteutus
+          </a></li>
+        </ol>
+      </nav>
+      <div class="sidebar-note">
+        <p>Yleiskuva ensin.<br>Tarkemmat sopimukset lähdekoodissa ja teknisissä oppaissa.</p>
+        <a href="https://github.com/OssiRuhanen/The-many-remembered">Lähdekoodi GitHubissa ↗</a>
+        <small>Edellyttää repositorion käyttöoikeutta.</small>
+      </div>
+    </aside>
+    <main id="content" tabindex="-1">
+      <p class="page-label">Agentic World / Kokonaiskuva</p>
+      <article><h1 id="mika-agentic-world-on">Mikä Agentic World on?<a class="headerlink" href="#mika-agentic-world-on" title="Linkki tähän kohtaan">#</a></h1>
+<p>Agentic World on kokeilu pysyvästä maailmasta, jonka asukkaat tekevät päätöksiä
+tekoälymallien avulla. Nykyinen maailma sijoittuu Brackenfordin kylään ja sitä
+ympäröivään fantasiamaailmaan. Asukkaat voivat esimerkiksi liikkua, keskustella,
+hankkia materiaaleja, tehdä työtä, oppia ja muodostaa yhteisöjä. Maailman tila ja
+tapahtumat säilyvät ajokertojen välillä.</p>
+<p><strong>Malli ehdottaa tekoa. Maailman moottori ratkaisee, voiko se tapahtua.</strong>
+Jos asukas sanoo rakentaneensa talon, lause ei vielä luo taloa. Rakentamisen
+täytyy onnistua maailman sääntöjen, materiaalien ja muiden ehtojen perusteella.</p>
+<p>Tämä opas kuvaa lähdekoodin rakennetta. Se ei ole nykyisen maailman tilannekuva
+tai lupaus siitä, että jokainen valinnainen palvelu on käytössä.</p>
+<h2 id="aloita-omasta-kysymyksestasi">Aloita omasta kysymyksestäsi<a class="headerlink" href="#aloita-omasta-kysymyksestasi" title="Linkki tähän kohtaan">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Mitä haluat ymmärtää?</th>
+<th>Lue seuraavaksi</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Mitkä osat saavat maailman toimimaan?</td>
+<td><a href="architecture/">Arkkitehtuuri</a></td>
+</tr>
+<tr>
+<td>Mitä kloonaamalla saa, ja miten kokeilen itse?</td>
+<td><a href="experiments/">Oma kokeilu</a></td>
+</tr>
+<tr>
+<td>Miten antaisin tämän uudelle koodaavalle mallille?</td>
+<td><a href="rebuild/">Oman version lähtökuvaus</a></td>
+</tr>
+<tr>
+<td>Mitä projektissa jo on?</td>
+<td>Alla oleva kokonaisuuksien kartta</td>
+</tr>
+</tbody>
+</table>
+<h2 id="projektin-kokonaisuudet">Projektin kokonaisuudet<a class="headerlink" href="#projektin-kokonaisuudet" title="Linkki tähän kohtaan">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Kokonaisuus</th>
+<th>Mitä se tekee?</th>
+<th>Mistä se löytyy?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Maailman moottori</td>
+<td>Validoi teot, muuttaa tilaa ja tallentaa tapahtumat.</td>
+<td><code>engine/world.py</code>, muu <code>engine/</code></td>
+</tr>
+<tr>
+<td>Sisältö</td>
+<td>Määrittelee esimerkiksi taitoja, töitä, paikkoja, tilanteita ja hahmojen lähtökohtia.</td>
+<td><code>content/</code>, <code>world/canonical/</code>, vanhemmat alustusluettelot <code>engine/world_defaults.py</code>:ssä</td>
+</tr>
+<tr>
+<td>Asukkaiden päätöksenteko</td>
+<td>Muodostaa hahmon näkymän, kysyy mallilta tekoa ja tulkitsee vastauksen.</td>
+<td><code>scripts/inhabitant_action_contract.py</code>, malliadapterit</td>
+</tr>
+<tr>
+<td>Maailman ajaminen</td>
+<td>Jakaa vuorot, etenee ajassa ja kokoaa päätökset käsiteltäviksi.</td>
+<td><code>scripts/world_heartbeat.py</code>, <code>scripts/world_session.py</code>, <code>scripts/shard_runner.py</code></td>
+</tr>
+<tr>
+<td>Muisti ja näkökulma</td>
+<td>Säilyttää hahmon kokemuksia ja uskomuksia erillään yhteisestä maailmantilasta.</td>
+<td>Valitun datakansion <code>state/memories/</code> ja <code>state/beliefs/</code></td>
+</tr>
+<tr>
+<td>Maailman katselu</td>
+<td>Näyttää julkisia tapahtumia, paikkoja ja asukkaita selaimessa.</td>
+<td><code>viewer/static/</code>, <code>scripts/world_viewer.py</code></td>
+</tr>
+<tr>
+<td>Kokeet</td>
+<td>Vertaa päätöksentekoa rajatuissa, erillisissä maailmoissa.</td>
+<td>CharacterLab, GameLab, <code>content/characterlab/</code></td>
+</tr>
+<tr>
+<td>Kehitysautomaatio</td>
+<td>Tutkii tarpeita, tekee koodimuutoksia ja toimittaa niitä tarkistettavaksi.</td>
+<td>Logos, <code>logos/</code>, <code>scripts/logos_*</code></td>
+</tr>
+<tr>
+<td>Tarkistukset ja käyttö</td>
+<td>Testaa lähdekoodia, seuraa toimintaa ja erottaa hyväksytyn koodin ajossa olevasta versiosta.</td>
+<td><code>tests/</code>, <code>scripts/check_source.py</code>, <code>deploy/</code>, <code>docs/</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="millaisia-asioita-maailma-osaa">Millaisia asioita maailma osaa?<a class="headerlink" href="#millaisia-asioita-maailma-osaa" title="Linkki tähän kohtaan">#</a></h2>
+<p>Nykyinen toteutus sisältää muun muassa seuraavat mekanismiperheet. Saatavilla
+oleva mekanismi ei tarkoita, että asukas käyttäisi sitä tai että se onnistuisi
+nykyisessä tilanteessa.</p>
+<ul>
+<li><strong>Paikat ja aika:</strong> reitit, liikkuminen, päivän vaiheet, sää ja tutkittava
+  rajaseutu.</li>
+<li><strong>Materia ja toimeentulo:</strong> rajalliset resurssit, varastot, omistus,
+  kuljettaminen, ruoka, juoma, työ, valmistus ja rakentaminen.</li>
+<li><strong>Asukkaiden elämä:</strong> muistot, uskomukset, puhe, viestit, tarpeet, taidot,
+  opettaminen ja hahmon itsensä valitsemat tavoitteet.</li>
+<li><strong>Yhteisöt:</strong> jäsenyys, yhteiset tavoitteet, johtaminen, vaalit ja
+  asutusten perustaminen.</li>
+<li><strong>Vaarat ja seuraukset:</strong> matkustamisen paineet, taistelu, pakeneminen,
+  vahingoittuminen sekä tapahtumiin sidottu tilanteiden eteneminen.</li>
+</ul>
+<p>Tarkemmat säännöt ovat englanninkielisessä
+<a href="https://github.com/OssiRuhanen/The-many-remembered/blob/master/docs/world-mechanics.md">mekaniikkaluettelossa</a>
+ja <a href="https://github.com/OssiRuhanen/The-many-remembered/blob/master/docs/README.md">teknisen dokumentaation hakemistossa</a>.
+Lähdekoodirepositorion linkit edellyttävät siihen käyttöoikeutta.</p>
+<h2 id="kolme-erilaista-tekoalyn-roolia">Kolme erilaista tekoälyn roolia<a class="headerlink" href="#kolme-erilaista-tekoalyn-roolia" title="Linkki tähän kohtaan">#</a></h2>
+<p><strong>Asukkaan malli</strong> valitsee tekoja hahmon oman näkymän perusteella. Se ei saa
+muuttaa maailman sääntöjä tai kirjoittaa tilatiedostoihin.</p>
+<p><strong>Kehittävä malli</strong>, kuten Logos tai ihmisen käynnistämä koodaava avustaja,
+muuttaa lähdekoodia erillisessä työtilassa. Muutos kulkee testien ja suojatun
+julkaisun kautta ennen mahdollista käyttöönottoa.</p>
+<p><strong>Arvioiva malli</strong> voi tuottaa tutkimuksia ja ehdotuksia. Sol-roolit, scoutit ja
+valinnainen Logos Lab kuuluvat tähän kokonaisuuteen. Niiden raportit eivät
+sellaisenaan muuta maailmaa tai hyväksy koodia.</p>
+<p>Näiden roolien mallivalintoja voi tutkia erikseen. Uusi asukasmalli, uusi
+koodaava malli ja kokonaan uusi pelitoteutus ovat kolme erilaista koetta.</p>
+<h2 id="mika-on-viela-kokeellista">Mikä on vielä kokeellista?<a class="headerlink" href="#mika-on-viela-kokeellista" title="Linkki tähän kohtaan">#</a></h2>
+<p>Moottori pystyy todentamaan esimerkiksi tavaran siirtymisen tai rakennuksen
+valmistumisen. Se ei yksin osoita, että asukkailla olisi kiinnostavia tarinoita,
+pitkäjänteisiä suunnitelmia tai hyvä yhteistyökyky. Näitä pitää arvioida
+toteutuneista vuoroista ja rajatuista kokeista.</p>
+<p>Nykyinen toteutus on myös kasvanut pala kerrallaan. <code>WorldStore</code> on suuri
+kokonaisuus, osa sisällöstä elää vielä Pythonin alustusluetteloissa ja
+asennuksessa on konekohtaisia riippuvuuksia. Opas erottaa nämä nykyiset
+ratkaisut niistä periaatteista, joita omassa toteutuksessa kannattaa säilyttää.</p></article>
+      <nav class="page-turn" aria-label="Edellinen ja seuraava luku">
+        <span></span><a href="architecture/"><small>Seuraava →</small>Arkkitehtuuri</a>
+      </nav>
+    </main>
+    <aside class="contents" aria-label="Tämän sivun sisältö">
+      <p class="nav-label">Tällä sivulla</p>
+      <ul><li><a href="#aloita-omasta-kysymyksestasi">Aloita omasta kysymyksestäsi</a></li><li><a href="#projektin-kokonaisuudet">Projektin kokonaisuudet</a></li><li><a href="#millaisia-asioita-maailma-osaa">Millaisia asioita maailma osaa?</a></li><li><a href="#kolme-erilaista-tekoalyn-roolia">Kolme erilaista tekoälyn roolia</a></li><li><a href="#mika-on-viela-kokeellista">Mikä on vielä kokeellista?</a></li>
+      </ul>
+    </aside>
+  </div>
+  <footer class="site-footer"><span>Agentic World · Brackenford</span><span>Arkkitehtuuri ja kokeilut</span></footer>
+</body>
+</html>

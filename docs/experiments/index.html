@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Opas pysyvän tekoälymaailman rakenteeseen, toimintaan ja omiin kokeiluihin.">
+  <title>Oma kokeilu · Agentic World</title>
+  <link rel="canonical" href="https://ossiruhanen.github.io/brackenford-world/docs/experiments/">
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Siirry sisältöön</a>
+  <header class="site-header">
+    <a class="brand" href="..">
+      <img src="../assets/favicon.svg" width="36" height="36" alt="">
+      <span>Agentic World<small>Projektin opas</small></span>
+    </a>
+    <a class="world-link" href="https://ossiruhanen.github.io/brackenford-world/">Katso maailmaa <span aria-hidden="true">↗</span></a>
+  </header>
+  <div class="page-layout">
+    <aside class="sidebar">
+      <nav aria-label="Oppaan luvut">
+        <p class="nav-label">Lue ja kokeile</p>
+        <ol class="chapter-list">
+          <li><a href="..">
+            <span class="chapter-number" aria-hidden="true">01</span>Kokonaiskuva
+          </a></li>
+          <li><a href="../architecture/">
+            <span class="chapter-number" aria-hidden="true">02</span>Arkkitehtuuri
+          </a></li>
+          <li><a href="./" aria-current="page">
+            <span class="chapter-number" aria-hidden="true">03</span>Oma kokeilu
+          </a></li>
+          <li><a href="../rebuild/">
+            <span class="chapter-number" aria-hidden="true">04</span>Oma toteutus
+          </a></li>
+        </ol>
+      </nav>
+      <div class="sidebar-note">
+        <p>Yleiskuva ensin.<br>Tarkemmat sopimukset lähdekoodissa ja teknisissä oppaissa.</p>
+        <a href="https://github.com/OssiRuhanen/The-many-remembered">Lähdekoodi GitHubissa ↗</a>
+        <small>Edellyttää repositorion käyttöoikeutta.</small>
+      </div>
+    </aside>
+    <main id="content" tabindex="-1">
+      <p class="page-label">Agentic World / Oma kokeilu</p>
+      <article><h1 id="kloonaa-ja-kokeile">Kloonaa ja kokeile<a class="headerlink" href="#kloonaa-ja-kokeile" title="Linkki tähän kohtaan">#</a></h1>
+<p>Kloonaamalla saat lähdekoodin, sisältömäärittelyt, testit ja dokumentaation.
+Voit käyttää niitä oman kokeilun pohjana tai antaa ne uudelle koodaavalle
+mallille. Ensimmäiseksi kannattaa luoda tyhjästä erillinen kokeilumaailma.</p>
+<h2 id="mita-kloonissa-on-ja-mita-tarvitaan-erikseen">Mitä kloonissa on ja mitä tarvitaan erikseen?<a class="headerlink" href="#mita-kloonissa-on-ja-mita-tarvitaan-erikseen" title="Linkki tähän kohtaan">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Kloonissa mukana</th>
+<th>Erikseen hankittava tai luotava</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Python-moottori, ajajat ja malliadapterit</td>
+<td>Python-ympäristö ja halutun mallireitin palvelut</td>
+</tr>
+<tr>
+<td>Tarkistettu sisältö ja alustusmäärittelyt</td>
+<td>Uuden maailman oma datakansio</td>
+</tr>
+<tr>
+<td>Testit ja CharacterLab-skenaariot</td>
+<td>Mallien käyttöoikeudet, kirjautumiset ja mahdolliset paikalliset painot</td>
+</tr>
+<tr>
+<td>Selaimessa toimivan katselimen lähteet</td>
+<td>Haluttaessa oma julkaisu ja palvelinasennus</td>
+</tr>
+<tr>
+<td>Historiallista esimerkkidataa</td>
+<td>Nykyisen maailman täysi, eheä tilannekopio, jos tarkoitus on jatkaa juuri sitä</td>
+</tr>
+</tbody>
+</table>
+<p>Lähdekoodirepositorio on tällä hetkellä yksityinen. Julkisen katselimen tai
+tämän oppaan avaaminen ei anna siihen käyttöoikeutta.</p>
+<p>Alla olevat komennot on tarkoitettu Linuxiin tai WSL:ään ja testattu Python
+3.12:lla. Tämä ensimmäinen kokeilu ei tarvitse mallipalvelua, Nodea,
+tausta-ajastinta tai dokumentaatiosivun rakennustyökaluja.</p>
+<h2 id="1-ota-lahdekoodi-ja-kirjaa-versio">1. Ota lähdekoodi ja kirjaa versio<a class="headerlink" href="#1-ota-lahdekoodi-ja-kirjaa-versio" title="Linkki tähän kohtaan">#</a></h2>
+<p>Kun GitHub-käyttöoikeus on käytössä:</p>
+<pre><code class="language-bash">git clone https://github.com/OssiRuhanen/The-many-remembered.git
+cd The-many-remembered
+git rev-parse HEAD
+</code></pre>
+<p>Säilytä tulostettu commit-tunniste kokeen muistiinpanoissa. Se kertoo, mitä
+sääntöjä ja sisältömäärittelyjä käytit. Kloonaus ei käynnistä asukkaita tai
+asenna palveluita.</p>
+<h2 id="2-luo-maailma-ilman-mallikutsuja">2. Luo maailma ilman mallikutsuja<a class="headerlink" href="#2-luo-maailma-ilman-mallikutsuja" title="Linkki tähän kohtaan">#</a></h2>
+<p>Suorita seuraava kloonin juuressa. <code>mktemp</code> tekee uuden datakansion erilleen
+lähdekoodista. Pidä sama terminaali auki seuraavaa vaihetta varten.</p>
+<pre><code class="language-bash">export WORLD_DEMO_ROOT=&quot;$(mktemp -d)&quot;
+python3 - &lt;&lt;'PY'
+import json
+import os
+from pathlib import Path
+from engine.world import WorldStore
+
+root = Path(os.environ[&quot;WORLD_DEMO_ROOT&quot;])
+store = WorldStore(root)
+store.bootstrap()
+result = store.apply_action(&quot;mira&quot;, {&quot;type&quot;: &quot;OBSERVE&quot;})
+assert result[&quot;status&quot;] == &quot;accepted&quot;, result
+
+# Avaa sama maailma uudelleen ja lue pysyvästi tallennettu tila.
+state = WorldStore(root).read_authoritative_state()
+assert (root / &quot;state/events.jsonl&quot;).stat().st_size &gt; 0
+print(json.dumps({&quot;root&quot;: str(root), &quot;tick&quot;: state[&quot;tick&quot;],
+                  &quot;result&quot;: result}, ensure_ascii=False, indent=2))
+PY
+</code></pre>
+<p>Tuloksessa näkyy <code>accepted</code>, datakansion sijainti ja tikki <code>0</code>. Havainnointi
+on tässä yksittäinen validoitu teko; se ei käynnistä tikkejä eteenpäin vievää
+maailman istuntoa. Maailma jää kyseiseen datakansioon myöhempää tarkastelua
+varten. Tilapäiskansio ei ole pitkäaikainen varmuuskopio.</p>
+<h2 id="3-katso-kokeilumaailmaa-selaimessa">3. Katso kokeilumaailmaa selaimessa<a class="headerlink" href="#3-katso-kokeilumaailmaa-selaimessa" title="Linkki tähän kohtaan">#</a></h2>
+<pre><code class="language-bash">python3 -m scripts.world_viewer --root &quot;$WORLD_DEMO_ROOT&quot;
+</code></pre>
+<p>Avaa <a href="http://127.0.0.1:8876">paikallinen katselin</a>. Se näyttää tämän kokeen
+maailman, kartan ja julkiset tapahtumat. Sulje palvelin painamalla <code>Ctrl+C</code>.
+Maailma ei etene vain siksi, että katselin on auki.</p>
+<h2 id="4-kokeile-laboratorioajoa-ilman-mallia">4. Kokeile laboratorioajoa ilman mallia<a class="headerlink" href="#4-kokeile-laboratorioajoa-ilman-mallia" title="Linkki tähän kohtaan">#</a></h2>
+<p>Seuraavassa skenaariossa on valmiit testitoiminnot (<code>stub_actions</code>). Se testaa
+kokeen ajamista ja tulosten tallentamista, ei kahden oikean mallin laatua.</p>
+<pre><code class="language-bash">LAB_OUTPUT_DIR=&quot;$(mktemp -d)&quot;
+python3 -m scripts.character_lab \
+  --scenario content/characterlab/simple_prompt_comparison.json \
+  --output &quot;$LAB_OUTPUT_DIR/comparison.json&quot;
+</code></pre>
+<p>CharacterLab luo kokeille erilliset lähtömaailman kopiot ja käyttää samaa
+<code>WorldStore</code>-validointia kuin tavallinen ajo. Tulokset jäävät annettuun
+JSON-tiedostoon. Kokeen väliaikaiset maailmat poistetaan ajon lopuksi.</p>
+<h2 id="enta-oikea-mallivertailu">Entä oikea mallivertailu?<a class="headerlink" href="#enta-oikea-mallivertailu" title="Linkki tähän kohtaan">#</a></h2>
+<p>Valitse ensin, mitä haluat pitää vakiona:</p>
+<table>
+<thead>
+<tr>
+<th>Koe</th>
+<th>Pidä samana</th>
+<th>Vaihda</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Päätöksentekijän vertailu</td>
+<td>Lähtötila, sisältö, teot, vuorobudjetti ja mittarit</td>
+<td>Asukasmalli tai sen ohjeistus</td>
+</tr>
+<tr>
+<td>Kehittäjän vertailu</td>
+<td>Lähtöcommit, tehtävä, sallitut työkalut ja hyväksymiskriteerit</td>
+<td>Koodaava malli</td>
+</tr>
+<tr>
+<td>Uusi toteutus</td>
+<td>Maailman tavoite ja keskeiset sopimukset</td>
+<td>Toteutus ja tarvittaessa teknologiat</td>
+</tr>
+</tbody>
+</table>
+<p>CharacterLab-skenaarion strategiassa <code>cognition</code> voi valita tuetun
+mallireitin ilman hahmon pysyvän profiilin muuttamista. Oikeassa mallikokeessa
+<code>stub_actions</code> jätetään pois ja haluttu palvelu määritetään erikseen.
+Paikallinen reitti käyttää nykyistä keskitettyä paikallismallin asetusta.
+Hermes-reitti tarvitsee toimivan Hermes-asennuksen ja palveluntarjoajan
+käyttöoikeudet.</p>
+<p><strong>Pelkkä ajajan <code>--model</code>-argumentti ei takaa kaikkien hahmojen mallin
+vaihtumista.</strong> Hahmokohtainen <code>cognition</code> ja adapterin reititys vaikuttavat
+valintaan. Esimerkiksi oletus-Hermes-adapteri käyttää omaa oletusmalliaan,
+ellei hahmokohtainen asetus valitse muuta. Tarkista todellinen reitti ja
+asetukset kokeen todisteista.</p>
+<p>Vertaa hyväksyttyjä ja hylättyjä tekoja, tavoitteiden toteutunutta etenemistä,
+toistoa, vuorojen kattavuutta, virheitä, latenssia ja saatavilla olevaa
+käyttötietoa. Sama siemen ei takaa etäpalvelun täysin toistettavaa vastausta,
+eikä yksi onnistunut tarina todista yleistä parannusta.</p>
+<p>Nykyisen maailman samasta hetkestä alkava vertailu tarvitsee erikseen otetun
+tilannekopion. GameLab on olemassa tätä varten: se lukee lähdemaailman
+hallitusti ja ajaa kokeet kopioissa. Pelkkä Git-klooni tai julkinen Pages-sivu
+ei sisällä tuota lähtötilannetta.</p>
+<p>Tarkemmat asetukset ja rajat:
+<a href="https://github.com/OssiRuhanen/The-many-remembered/blob/master/docs/character-lab.md">CharacterLab ja GameLab</a>,
+<a href="https://github.com/OssiRuhanen/The-many-remembered/blob/master/scripts/hermes_adapter.py">malliadapteri</a>
+ja <a href="https://github.com/OssiRuhanen/The-many-remembered/blob/master/docs/world-runtime-guide.md">maailman ajaminen</a>.</p>
+<p>Jos tarkoitus on antaa uuden mallin rakentaa peli itse, jatka
+<a href="../rebuild/">oman version lähtökuvaukseen</a>.</p></article>
+      <nav class="page-turn" aria-label="Edellinen ja seuraava luku">
+        <a href="../architecture/"><small>← Edellinen</small>Arkkitehtuuri</a><a href="../rebuild/"><small>Seuraava →</small>Oma toteutus</a>
+      </nav>
+    </main>
+    <aside class="contents" aria-label="Tämän sivun sisältö">
+      <p class="nav-label">Tällä sivulla</p>
+      <ul><li><a href="#mita-kloonissa-on-ja-mita-tarvitaan-erikseen">Mitä kloonissa on ja mitä tarvitaan erikseen?</a></li><li><a href="#1-ota-lahdekoodi-ja-kirjaa-versio">1. Ota lähdekoodi ja kirjaa versio</a></li><li><a href="#2-luo-maailma-ilman-mallikutsuja">2. Luo maailma ilman mallikutsuja</a></li><li><a href="#3-katso-kokeilumaailmaa-selaimessa">3. Katso kokeilumaailmaa selaimessa</a></li><li><a href="#4-kokeile-laboratorioajoa-ilman-mallia">4. Kokeile laboratorioajoa ilman mallia</a></li><li><a href="#enta-oikea-mallivertailu">Entä oikea mallivertailu?</a></li>
+      </ul>
+    </aside>
+  </div>
+  <footer class="site-footer"><span>Agentic World · Brackenford</span><span>Arkkitehtuuri ja kokeilut</span></footer>
+</body>
+</html>

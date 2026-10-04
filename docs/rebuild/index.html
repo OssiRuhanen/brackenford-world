@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Opas pysyvän tekoälymaailman rakenteeseen, toimintaan ja omiin kokeiluihin.">
+  <title>Oma toteutus · Agentic World</title>
+  <link rel="canonical" href="https://ossiruhanen.github.io/brackenford-world/docs/rebuild/">
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon.svg">
+  <link rel="stylesheet" href="../assets/guide.css">
+</head>
+<body>
+  <a class="skip-link" href="#content">Siirry sisältöön</a>
+  <header class="site-header">
+    <a class="brand" href="..">
+      <img src="../assets/favicon.svg" width="36" height="36" alt="">
+      <span>Agentic World<small>Projektin opas</small></span>
+    </a>
+    <a class="world-link" href="https://ossiruhanen.github.io/brackenford-world/">Katso maailmaa <span aria-hidden="true">↗</span></a>
+  </header>
+  <div class="page-layout">
+    <aside class="sidebar">
+      <nav aria-label="Oppaan luvut">
+        <p class="nav-label">Lue ja kokeile</p>
+        <ol class="chapter-list">
+          <li><a href="..">
+            <span class="chapter-number" aria-hidden="true">01</span>Kokonaiskuva
+          </a></li>
+          <li><a href="../architecture/">
+            <span class="chapter-number" aria-hidden="true">02</span>Arkkitehtuuri
+          </a></li>
+          <li><a href="../experiments/">
+            <span class="chapter-number" aria-hidden="true">03</span>Oma kokeilu
+          </a></li>
+          <li><a href="./" aria-current="page">
+            <span class="chapter-number" aria-hidden="true">04</span>Oma toteutus
+          </a></li>
+        </ol>
+      </nav>
+      <div class="sidebar-note">
+        <p>Yleiskuva ensin.<br>Tarkemmat sopimukset lähdekoodissa ja teknisissä oppaissa.</p>
+        <a href="https://github.com/OssiRuhanen/The-many-remembered">Lähdekoodi GitHubissa ↗</a>
+        <small>Edellyttää repositorion käyttöoikeutta.</small>
+      </div>
+    </aside>
+    <main id="content" tabindex="-1">
+      <p class="page-label">Agentic World / Oma toteutus</p>
+      <article><h1 id="lahtokuvaus-omalle-toteutukselle">Lähtökuvaus omalle toteutukselle<a class="headerlink" href="#lahtokuvaus-omalle-toteutukselle" title="Linkki tähän kohtaan">#</a></h1>
+<p>Tämä luku on ensimmäinen arkkitehtuuritason tehtävänanto koodaavalle mallille.
+Se kuvaa, mitä ideasta kannattaa säilyttää, vaikka toteutus tehtäisiin uudelleen.
+Yksityiskohtainen sisältö, tasapaino ja kaikki nykyiset mekanismit eivät vielä
+muodosta tässä täydellistä toteutusmäärittelyä.</p>
+<h2 id="tavoite">Tavoite<a class="headerlink" href="#tavoite" title="Linkki tähän kohtaan">#</a></h2>
+<p>Rakenna pysyvä, tekstipohjainen maailma, jossa useat tekoälyasukkaat
+tekevät omia päätöksiään rajatun tiedon varassa. Maailman säännöt ratkaisevat
+tekojen todelliset seuraukset. Kokemukset ja tapahtumat säilyvät, jotta
+myöhempi käyttäytyminen voi perustua aiempaan elämään.</p>
+<p>Ensimmäinen onnistumisen merkki on pieni mutta johdonmukainen maailma:
+asukas voi havaita tilanteen, yrittää sallittua tekoa, saada todellisen
+tuloksen ja kohdata sen seuraukset seuraavalla vuorolla.</p>
+<h2 id="sopimukset-jotka-sailytetaan">Sopimukset, jotka säilytetään<a class="headerlink" href="#sopimukset-jotka-sailytetaan" title="Linkki tähän kohtaan">#</a></h2>
+<table>
+<thead>
+<tr>
+<th>Sopimus</th>
+<th>Miten sen voi osoittaa?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Malli ehdottaa, moottori hyväksyy.</td>
+<td>Keksitty esine tai mahdoton liike ei toteudu pelkällä tekstillä.</td>
+</tr>
+<tr>
+<td>Tila säilyy ajokertojen välillä.</td>
+<td>Uusi prosessi lukee samat sijainnit, omistukset ja historian.</td>
+</tr>
+<tr>
+<td>Muistot ovat subjektiivisia.</td>
+<td>Virheellinen uskomus ei muuta muiden sijaintia tai tavaroita.</td>
+</tr>
+<tr>
+<td>Resurssit ja oikeudet tarkistetaan tekohetkellä.</td>
+<td>Kaksi asukasta ei voi molemmat kuluttaa samaa viimeistä esinettä.</td>
+</tr>
+<tr>
+<td>Näkyvyys on hahmokohtaista.</td>
+<td>Yhden asukkaan näkymä ei paljasta toisen yksityistä muistia.</td>
+</tr>
+<tr>
+<td>Julkinen näkymä on johdettu tieto.</td>
+<td>Kartan avaaminen ei muuta maailmaa tai julkaise yksityistä ajattelua.</td>
+</tr>
+<tr>
+<td>Virheellä on havaittava tulos.</td>
+<td>Mallivirhe, teon hylkäys ja keskeytynyt tallennus voidaan erottaa toisistaan.</td>
+</tr>
+<tr>
+<td>Kokeella on rajattu lähtötila.</td>
+<td>Sama lähtökopio ja määritelty vuorobudjetti voidaan antaa eri päätöksentekijöille.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="ensimmaisen-version-jarkeva-rajaus">Ensimmäisen version järkevä rajaus<a class="headerlink" href="#ensimmaisen-version-jarkeva-rajaus" title="Linkki tähän kohtaan">#</a></h2>
+<ol>
+<li><strong>Maailman ydin:</strong> muutama paikka ja reitti, kaksi asukasta, yksi rajallinen
+   resurssi, pysyvä tila ja tapahtumahistoria.</li>
+<li><strong>Validoidut teot:</strong> havainnointi, liikkuminen, puhuminen ja yhden resurssin
+   siirtäminen. Onnistumisen ja hylkäyksen ehdot kirjoitetaan ennen laajentamista.</li>
+<li><strong>Päätöksentekijä:</strong> aluksi ennalta määrätyt testiehdotukset, sen jälkeen
+   yksi malliadapteri samaan rajapintaan.</li>
+<li><strong>Jatkuvuus:</strong> oma muisti, seuraavan vuoron rajattu näkymä ja prosessin
+   uudelleenkäynnistyksen yli jatkuva maailma.</li>
+<li><strong>Havainnointi ja vertailu:</strong> lukutilassa toimiva katselin sekä kaksi
+   rajattua ajoa identtisestä lähtötilasta.</li>
+<li><strong>Laajentaminen:</strong> työ, oppiminen, tavoitteet, yhteisöt ja muut mekanismit
+   yksi todennettava kokonaisuus kerrallaan.</li>
+</ol>
+<p>Tämä on ehdotettu rakennusjärjestys uudelle toteutukselle. Se ei ole kuvaus
+nykyisen repositorion kehityshistoriasta tai päätös sen uudelleenkirjoittamisesta.
+Logosin kaltainen kehitysautomaatio voidaan lisätä erikseen, kun maailman ydin
+ja tarkistukset jo toimivat.</p>
+<h2 id="tehtavananto-jonka-voit-antaa-mallille">Tehtävänanto, jonka voit antaa mallille<a class="headerlink" href="#tehtavananto-jonka-voit-antaa-mallille" title="Linkki tähän kohtaan">#</a></h2>
+<pre><code class="language-text">Lue docs/guide/index.md, docs/guide/architecture.md,
+docs/guide/experiments.md ja docs/guide/rebuild.md.
+
+Tavoite: toteuta pieni pysyvä maailma tämän oppaan sopimusten pohjalta.
+Aloita maailman ytimestä ja neljästä validoidusta teosta. Pidä päätöksentekijä
+vaihdettavana ja erillään maailman tilan muuttamisesta.
+
+Ennen toteutusta nimeä:
+- nykytilan, tapahtumien ja hahmokohtaisen muistin tietomallit;
+- teon ehdotuksen, validoinnin ja tuloksen rajapinnat;
+- pysyvyys, vuorojärjestys ja keskeytyksestä palautumisen rajat;
+- mitä hyväksymiskriteerejä ensimmäinen versio todistaa.
+
+Toteuta ensin pieni päästä päähän toimiva ketju. Osoita erillisessä
+kokeilumaailmassa hyväksytty teko, hylätty teko, kahden toimijan kilpailu
+samasta resurssista ja tilan säilyminen uudelleenkäynnistyksessä.
+Älä oleta, että mallin kertomus on maailman tosiasia.
+
+Jos työskentelet nykyisessä repositoriossa, noudata AGENTS.md:tä ja käytä
+olemassa olevia moottorin rajapintoja. Jos teet kokonaan uuden toteutuksen,
+tee se omaan repositorioon ja kirjaa tietoiset erot tähän lähtökuvaukseen.
+Raportoi toteutunut toiminta, testien näyttö ja vielä avoimet rajat erikseen.
+</code></pre>
+<p>Koodaavaa mallia verrattaessa anna malleille sama lähtöcommit tai sama
+lähtökuvaus, samat hyväksymiskriteerit ja vertailukelpoinen työbudjetti.
+Säilytä jokaisen toteutus omassa haarassaan tai repositoriossaan.</p>
+<h2 id="miten-tasta-edetaan-tarkempaan-dokumentaatioon">Miten tästä edetään tarkempaan dokumentaatioon?<a class="headerlink" href="#miten-tasta-edetaan-tarkempaan-dokumentaatioon" title="Linkki tähän kohtaan">#</a></h2>
+<p>Jokaisesta myöhemmin kuvattavasta mekanismista kannattaa kirjoittaa sama pieni
+sopimus:</p>
+<ul>
+<li><strong>Tarkoitus:</strong> mitä asukas voi tehdä ja miksi mekanismi on olemassa.</li>
+<li><strong>Lähtöehdot:</strong> missä, millä tiedolla, taidolla, materiaaleilla ja oikeuksilla
+  teko on mahdollinen.</li>
+<li><strong>Tilamuutos:</strong> mikä tarkalleen muuttuu onnistumisessa.</li>
+<li><strong>Hylkäys ja keskeytys:</strong> mitä jää voimaan, jos teko ei onnistu.</li>
+<li><strong>Todiste:</strong> tallennettava tapahtuma tai kuitti ja sen tarkistaminen.</li>
+<li><strong>Näkyvyys:</strong> mitä tekijä, muut asukkaat ja julkinen katselin saavat tietää.</li>
+<li><strong>Esimerkkikoe:</strong> vähintään onnistuva ja epäonnistuva tapaus.</li>
+</ul>
+<p>Näin seuraavat dokumentaatiokerrokset voidaan lisätä työn, resurssien,
+muistin, tavoitteiden ja yhteisöjen ympärille ilman, että yleiskuva pitää
+kirjoittaa uudelleen. Nykyisen toteutuksen tarkat ehdot tarkistetaan aina
+kyseisen mekanismin lähdekoodista ja testeistä.</p></article>
+      <nav class="page-turn" aria-label="Edellinen ja seuraava luku">
+        <a href="../experiments/"><small>← Edellinen</small>Oma kokeilu</a>
+      </nav>
+    </main>
+    <aside class="contents" aria-label="Tämän sivun sisältö">
+      <p class="nav-label">Tällä sivulla</p>
+      <ul><li><a href="#tavoite">Tavoite</a></li><li><a href="#sopimukset-jotka-sailytetaan">Sopimukset, jotka säilytetään</a></li><li><a href="#ensimmaisen-version-jarkeva-rajaus">Ensimmäisen version järkevä rajaus</a></li><li><a href="#tehtavananto-jonka-voit-antaa-mallille">Tehtävänanto, jonka voit antaa mallille</a></li><li><a href="#miten-tasta-edetaan-tarkempaan-dokumentaatioon">Miten tästä edetään tarkempaan dokumentaatioon?</a></li>
+      </ul>
+    </aside>
+  </div>
+  <footer class="site-footer"><span>Agentic World · Brackenford</span><span>Arkkitehtuuri ja kokeilut</span></footer>
+</body>
+</html>

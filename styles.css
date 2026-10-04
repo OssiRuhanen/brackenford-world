@@ -21,6 +21,7 @@ button.primary { background: var(--amber); color: #171109; border-color: var(--a
 .world-status span, .directory-heading span, .inspector-heading span, .eyebrow { color: var(--muted); font-size: .72rem; font-weight: 700; letter-spacing: .13em; }
 .world-status strong { font: 500 1.05rem ui-monospace, SFMono-Regular, Menlo, monospace; }
 .follow { display: flex; align-items: center; gap: .55rem; color: var(--muted); cursor: pointer; }
+.documentation-link { color: var(--amber); font-size: .875rem; text-underline-offset: .2em; }
 .follow input { accent-color: var(--amber); width: 1.05rem; height: 1.05rem; }
 .follow span { font-size: .86rem; letter-spacing: 0; }
 .engine-room-trigger { display: flex; align-items: center; gap: .45rem; padding: .48rem .65rem; color: var(--muted); background: transparent; font-size: .76rem; }

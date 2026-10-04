@@ -1,0 +1,98 @@
+:root {
+  color-scheme: light;
+  --paper: #faf9f5;
+  --ink: #202f29;
+  --muted: #56645d;
+  --green: #235b46;
+  --line: #d9dfd5;
+  --wash: #edf1e8;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 100%;
+  line-height: 1.75;
+  color: var(--ink);
+  background: var(--paper);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: var(--green); text-underline-offset: .2em; }
+a:hover { color: #102f22; }
+a:focus-visible, summary:focus-visible { outline: 3px solid #a3521d; outline-offset: 4px; border-radius: 2px; }
+::selection { background: #d9e8c8; }
+.skip-link { position: absolute; left: 1rem; top: -6rem; z-index: 5; padding: .7rem 1rem; background: white; }
+.skip-link:focus { top: .5rem; }
+.site-header {
+  max-width: 96rem;
+  margin: auto;
+  padding: 1.35rem 2.5rem;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.brand { display: flex; align-items: center; gap: .8rem; color: var(--ink); text-decoration: none; font-size: 1.15rem; font-weight: 700; line-height: 1.3; }
+.brand small { display: block; color: var(--muted); font-size: .875rem; font-weight: 400; margin-top: .25rem; }
+.world-link { font-size: .9rem; }
+.page-layout { display: grid; grid-template-columns: 13.5rem minmax(0, 47rem) 13rem; justify-content: center; gap: 3.5rem; max-width: 96rem; margin: auto; padding: 3.5rem 2.5rem 4rem; }
+.sidebar, .contents { align-self: start; position: sticky; top: 2rem; }
+.nav-label { font-size: .75rem; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; color: var(--muted); margin: 0 0 1.2rem; }
+.chapter-list { list-style: none; padding: 0; margin: 0; }
+.chapter-list li { margin: .35rem 0; }
+.chapter-list a { display: flex; gap: .75rem; padding: .6rem .75rem; border-left: 3px solid transparent; text-decoration: none; color: var(--muted); font-size: .9375rem; }
+.chapter-list a[aria-current] { color: var(--green); background: var(--wash); border-color: var(--green); font-weight: 650; }
+.chapter-list a:hover { background: var(--wash); }
+.chapter-number { font-size: .8rem; font-variant-numeric: tabular-nums; padding-top: .13rem; }
+.sidebar-note { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); font-size: .875rem; color: var(--muted); }
+.sidebar-note small { display: block; font-size: .75rem; margin-top: .5rem; }
+main { min-width: 0; }
+.page-label { font-size: .8rem; color: var(--muted); margin: 0 0 1.1rem; }
+article { font-size: 1.0625rem; overflow-wrap: anywhere; }
+article h1 { font-family: Georgia, "Times New Roman", serif; font-size: clamp(2.15rem, 3.3vw, 3.25rem); font-weight: 400; line-height: 1.16; letter-spacing: -.025em; margin: 0 0 1.65rem; text-wrap: balance; }
+article h2 { font-size: 1.5rem; font-weight: 650; line-height: 1.35; margin: 3rem 0 1.1rem; letter-spacing: -.02em; scroll-margin-top: 2rem; }
+article p, article ul, article ol { margin: 1rem 0; }
+article li { padding-left: .25rem; margin-bottom: .65rem; }
+article ul, article ol { padding-left: 1.35rem; }
+article strong { font-weight: 650; }
+article img { display: block; width: 100%; max-width: 34rem; height: auto; margin: 1.5rem auto; }
+.headerlink { font-size: .85em; margin-left: .35em; text-decoration: none; opacity: 0; }
+h1:hover .headerlink, h2:hover .headerlink, .headerlink:focus-visible { opacity: 1; }
+article table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: .9375rem; line-height: 1.65; margin: 1.6rem 0; }
+article th, article td { padding: .85rem .75rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); min-width: 8rem; }
+article th { background: var(--wash); color: var(--green); font-weight: 650; }
+article code { font-family: ui-monospace, "Cascadia Code", "DejaVu Sans Mono", monospace; font-size: .84em; background: var(--wash); border-radius: 3px; padding: .12rem .25rem; }
+article pre { background: #1d332c; color: #f3f5ea; border-radius: 6px; padding: 1.3rem; overflow-x: auto; line-height: 1.7; font-size: .9375rem; }
+article pre code { font-size: .9375rem; padding: 0; background: transparent; color: inherit; }
+.contents ul { list-style: none; padding: 0; margin: 0; border-left: 1px solid var(--line); }
+.contents li { margin: 0 0 .8rem; padding-left: 1rem; }
+.contents a { font-size: .875rem; line-height: 1.5; color: var(--muted); text-decoration: none; display: block; }
+.contents a:hover { color: var(--green); text-decoration: underline; }
+.page-turn { display: flex; justify-content: space-between; gap: 1.5rem; border-top: 1px solid var(--line); margin-top: 3rem; padding-top: 1.5rem; }
+.page-turn a { text-decoration: none; font-weight: 600; }
+.page-turn a:last-child { text-align: right; }
+.page-turn small { display: block; font-size: .8rem; font-weight: 400; color: var(--muted); }
+.site-footer { display: flex; gap: 1rem; justify-content: space-between; flex-wrap: wrap; max-width: 96rem; margin: auto; padding: 1.5rem 2.5rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .875rem; }
+@media (max-width: 78rem) {
+  .page-layout { grid-template-columns: 12.5rem minmax(0, 47rem); gap: 2.5rem; }
+  .contents { display: none; }
+}
+@media (max-width: 52rem) {
+  .site-header { padding: 1rem 1.25rem; flex-wrap: wrap; }
+  .page-layout { display: block; padding: 1.5rem 1.25rem 2.5rem; }
+  .sidebar { position: static; margin-bottom: 2.5rem; }
+  .nav-label { margin-bottom: .5rem; }
+  .chapter-list { display: flex; flex-wrap: wrap; gap: .2rem .5rem; }
+  .chapter-list li { flex: 1 1 10rem; margin: 0; }
+  .chapter-list a { padding: .5rem; }
+  .sidebar-note { display: none; }
+  article { font-size: 1rem; }
+  article h2 { font-size: 1.35rem; }
+  article th, article td { padding: .65rem; }
+  .site-footer { padding: 1.25rem; }
+}
+@media print {
+  .site-header, .sidebar, .contents, .page-label, .page-turn, .site-footer, .skip-link, .headerlink { display: none; }
+  .page-layout { display: block; padding: 0; }
+  body { background: white; color: black; }
+  article pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #eee; color: black; }
+  article table { display: table; font-size: .8rem; }
+}
