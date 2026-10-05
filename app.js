@@ -2,6 +2,7 @@
 
 const ui = {
   worldTick: document.querySelector("#world-tick"), eventHead: document.querySelector("#event-head"),
+  worldFreshness: document.querySelector("#world-freshness"),
   worldClock: document.querySelector("#world-clock"), people: document.querySelector("#inhabitant-list"),
   places: document.querySelector("#place-list"), inspector: document.querySelector("#inspector-content"),
   inspectorPanel: document.querySelector("#inspector"), inspectorExpand: document.querySelector("#inspector-expand"),
@@ -17,6 +18,8 @@ const ui = {
   storyCategory: document.querySelector("#story-category"), storyPerson: document.querySelector("#story-person"),
   error: document.querySelector("#error-banner"),
   chronicleTab: document.querySelector("#chronicle-tab"), graphTab: document.querySelector("#graph-tab"),
+  characterReplayTab: document.querySelector("#character-replay-tab"),
+  characterReplayView: document.querySelector("#character-replay-view"),
   logosTab: document.querySelector("#logos-tab"), logosLabTab: document.querySelector("#logos-lab-tab"),
   chronicleView: document.querySelector("#chronicle-view"), graphView: document.querySelector("#graph-view"),
   logosView: document.querySelector("#logos-view"), logosLabView: document.querySelector("#logos-lab-view"),
@@ -33,6 +36,7 @@ const ui = {
   engineRoomCopy: document.querySelector("#engine-room-copy"), engineRoomContent: document.querySelector("#engine-room-content"), engineRoomObserved: document.querySelector("#engine-room-observed"),
   operationalHealthOpen: document.querySelector("#operational-health-open"), operationalHealth: document.querySelector("#operational-health"),
   operationalHealthClose: document.querySelector("#operational-health-close"), operationalHealthRefresh: document.querySelector("#operational-health-refresh"),
+  operationalHealthCopy: document.querySelector("#operational-health-copy"),
   operationalHealthContent: document.querySelector("#operational-health-content"), operationalHealthObserved: document.querySelector("#operational-health-observed"),
   operationalHealthLabel: document.querySelector("#operational-health-label"),
 };
@@ -49,26 +53,36 @@ const characterStoryCache = new Map();
 let staticCharacterStoriesPromise = null;
 const jsonExpansionState = new Map();
 const jsonScrollState = new Map();
-const inspectorDisclosureState = new Map();
+const disclosureState = new Map();
 let graphPositions = new Map();
 let graphViewBox = { x: 0, y: 0, width: 1400, height: 900 };
 let graphDrag = null;
 let graphFiltersInitialized = false;
 let graphTooltipHideTimer = null;
+let renderedGraphIdentity = null;
 let modelHealthSnapshot = null;
 let operationalHealthSnapshot = null;
 let modelHealthRetryTimer = null;
 let worldRefreshInFlight = false;
 let worldRenderDeferred = false;
+let worldRefreshTimer = null;
+let renderedWorldIdentity = null;
+let operationalHealthInFlight = false;
+let operationalHealthRetryAfter = 0;
+const OPERATIONAL_HEALTH_REFRESH_MS = 30000;
 let logosSnapshot = null;
 let logosLabSnapshot = null;
 let storySnapshot = null;
 let eventSnapshot = null;
+let eventRequestGeneration = 0;
 let storyPreviousSeen = 0;
+let storyRequestGeneration = 0;
+let liveSnapshotBase = null;
 const STORY_SEEN_KEY = "brackenford-world-story-sequence";
 const visibleGraphTypes = new Set();
-const defaultGraphTypes = new Set(["place"]);
+const defaultGraphTypes = new Set(["place", "inhabitant", "npc"]);
 const viewerConfig = window.BRACKENFORD_VIEWER || { mode: "api" };
+const liveApiBase = typeof viewerConfig.liveApiBase === "string" ? viewerConfig.liveApiBase.replace(/\/+$/, "") : null;
 const graphTypeOrder = ["place", "inhabitant", "npc", "resource", "building", "situation", "store", "item"];
 const graphTypeLabels = {
   place: "Places", inhabitant: "Inhabitants", npc: "Other residents", resource: "Resources",
@@ -96,8 +110,44 @@ async function getJson(path) {
   return body;
 }
 
+function resetProjectionCaches() {
+  storyRequestGeneration += 1;
+  if (storySnapshot || ui.storyRefresh.disabled) {
+    ui.storyStatus.textContent = "The world publication changed. Refresh to read its story.";
+  }
+  ui.storyRefresh.disabled = false;
+  staticCharacterStoriesPromise = null;
+  characterStoryCache.clear();
+  logosSnapshot = null;
+  logosLabSnapshot = null;
+  storySnapshot = null;
+  eventSnapshot = null;
+}
+
 async function getWorld() {
-  return getJson(viewerConfig.mode === "static" ? "data/world.json" : "/api/world");
+  if (viewerConfig.mode !== "static") return getJson("/api/world");
+  if (liveApiBase) {
+    try {
+      const manifest = await getJson(`${liveApiBase}/api/v1/latest.json`);
+      if (manifest.schema !== "brackenford-public-snapshot/v1" || !/^[a-f0-9]{64}$/.test(manifest.snapshot_id || "")) {
+        throw new Error("Live projection returned an invalid manifest.");
+      }
+      const candidateBase = `${liveApiBase}/api/v1/snapshots/${manifest.snapshot_id}/`;
+      const candidateWorld = await getJson(new URL("data/world.json", candidateBase).href);
+      if (liveSnapshotBase !== candidateBase) resetProjectionCaches();
+      liveSnapshotBase = candidateBase;
+      return candidateWorld;
+    } catch (error) {
+      console.warn("Live projection unavailable; using the bundled snapshot.", error);
+      if (liveSnapshotBase) resetProjectionCaches();
+      liveSnapshotBase = null;
+    }
+  }
+  return getJson("data/world.json");
+}
+
+function projectionPath(path) {
+  return liveSnapshotBase ? new URL(path, liveSnapshotBase).href : path;
 }
 
 async function getEvents(first, last) {
@@ -108,7 +158,7 @@ async function getEvents(first, last) {
   const events = [];
   let truncated = false;
   for (const chunk of relevant) {
-    const body = await getJson(`data/events/${chunk.file}`);
+    const body = await getJson(projectionPath(`data/events/${chunk.file}`));
     for (const event of body.events) {
       if (event.tick >= first && event.tick <= last) events.push(event);
       if (events.length > 500) { truncated = true; break; }
@@ -120,10 +170,11 @@ async function getEvents(first, last) {
 
 async function getWorldStory() {
   if (viewerConfig.mode !== "static") return getJson("/api/world-story?limit=160");
+  const fallback = world.world_story_fallback;
   try {
-    return await getJson(world.world_story_file || "data/world-story.json");
+    return await getJson(projectionPath(world.world_story_file || "data/world-story.json"));
   } catch (error) {
-    if (world.world_story_fallback) return world.world_story_fallback;
+    if (fallback) return fallback;
     throw error;
   }
 }
@@ -139,9 +190,18 @@ async function getCharacterStory(identity) {
     return getJson(`/api/character-story?identity=${encodeURIComponent(identity)}&limit=80`);
   }
   if (!staticCharacterStoriesPromise) {
-    staticCharacterStoriesPromise = getJson(world.character_story_file || "data/character-stories.json");
+    staticCharacterStoriesPromise = getJson(projectionPath(world.character_story_file || "data/character-stories.json"));
   }
-  const stories = await staticCharacterStoriesPromise;
+  const request = staticCharacterStoriesPromise;
+  let stories;
+  try {
+    stories = await request;
+  } catch (error) {
+    // Share an in-flight read, but let a failed publication be retried. A late
+    // failure from a replaced snapshot must not clear its newer request.
+    if (staticCharacterStoriesPromise === request) staticCharacterStoriesPromise = null;
+    throw error;
+  }
   return stories[identity] || {
     identity, through_tick: world.tick, events: [], total_events: 0, truncated: false, limit: 80,
     privacy: "Public authoritative events only.",
@@ -165,17 +225,39 @@ async function getAutomationActivity(kind) {
   if (viewerConfig.mode === "static") {
     const file = kind === "lab" ? world.logos_lab_activity_file : world.logos_activity_file;
     if (!file) throw new Error("A public automation snapshot is not available in this publication.");
-    return getJson(file);
+    return getJson(projectionPath(file));
   }
   return getJson(kind === "lab" ? "/api/logos-lab-activity" : "/api/logos-activity");
 }
 function showError(error) { ui.error.textContent = error.message || String(error); ui.error.hidden = false; }
 function clearError() { ui.error.hidden = true; }
+function showWorldError(error) {
+  ui.worldFreshness.dataset.status = "waiting";
+  ui.worldFreshness.querySelector("strong").textContent = world ? "Last proven" : "Waiting";
+  showError(error);
+}
 function navButton(kind, id, name, meta) {
   return `<button type="button" data-kind="${kind}" data-id="${escapeHtml(id)}"><span class="nav-title">${escapeHtml(name)}</span><span class="nav-meta">${escapeHtml(meta || "")}</span></button>`;
 }
 
+function worldIdentity(value) {
+  return `${value?.world_id || "unknown"}:${value?.tick ?? "unknown"}:${value?.event_head?.event_id || "none"}:${value?.event_head?.sequence ?? 0}`;
+}
+
+function renderWorldFreshness() {
+  const evidence = world?.projection_evidence || {};
+  const published = viewerConfig.mode === "static" && !evidence.status;
+  const status = published ? "measured" : (evidence.status || "unknown");
+  ui.worldFreshness.dataset.status = status;
+  const label = published ? "Published" : status === "measured" ? "Live" : status === "stale" ? "Last proven" : title(status);
+  ui.worldFreshness.querySelector("strong").textContent = label;
+  ui.worldFreshness.title = evidence.observed_at
+    ? `${label} snapshot sampled ${new Date(evidence.observed_at).toLocaleTimeString()}`
+    : `${label} snapshot`;
+}
+
 function renderWorld() {
+  characterReplayer.updateWorld(world, viewerConfig.mode);
   ui.worldTick.textContent = world.tick.toLocaleString();
   ui.eventHead.textContent = world.event_head.event_id ? `#${world.event_head.sequence.toLocaleString()} · ${world.event_head.event_id.slice(0, 8)}` : "No events";
   const clock = world.clock || {};
@@ -188,18 +270,14 @@ function renderWorld() {
   ui.operationalHealthOpen.hidden = !world.operational_health_available;
   ui.logosTab.hidden = !world.logos_activity_available;
   ui.logosLabTab.hidden = !world.logos_lab_activity_available;
-  if (world.operational_health_available && operationalHealthSnapshot === null) refreshOperationalHealth();
   document.querySelectorAll(".directory button").forEach(button => button.addEventListener("click", inspect));
-  renderGraph();
   if (!ui.graphView.hidden) {
-    if (graphInspectorMode === "health") renderSchemaHealth();
-    else if (selectedGraphNode) {
-      const node = world.graph?.nodes.find(item => item.id === selectedGraphNode);
-      if (node) renderGraphInspector(node);
-    }
+    renderGraph();
+    renderSelectedGraphInspector();
   } else if (!ui.chronicleView.hidden && selectedInspector) {
     renderInspector(selectedInspector.kind, selectedInspector.id);
   }
+  renderedWorldIdentity = worldIdentity(world);
 }
 
 function tags(values) {
@@ -225,7 +303,7 @@ function inspect(event) {
 function renderInspector(kind, id) {
   if (kind === "person") {
     const person = world.inhabitants.find(item => item.id === id);
-    if (!person) return;
+    if (!person) { selectedInspector = null; showMissingSelection(); return; }
     const skills = Object.entries(person.skills || {}).sort((a, b) => (b[1].level || 0) - (a[1].level || 0));
     ui.inspector.innerHTML = `
       <h2>${escapeHtml(person.name)}</h2><p class="role">${escapeHtml(person.species ? `${title(person.species)} · ${person.role}` : person.role)}</p>
@@ -237,7 +315,7 @@ function renderInspector(kind, id) {
       <section class="detail-section"><h3>Affordances</h3>${tags(person.affordances)}</section>`;
   } else {
     const place = world.places.find(item => item.id === id);
-    if (!place) return;
+    if (!place) { selectedInspector = null; showMissingSelection(); return; }
     const residents = place.inhabitants.map(personId => world.inhabitants.find(item => item.id === personId)).filter(Boolean);
     ui.inspector.innerHTML = `
       <h2>${escapeHtml(place.name)}</h2><p class="role">${escapeHtml(place.description || place.name)}</p>
@@ -252,6 +330,25 @@ function renderInspector(kind, id) {
     setView("graph");
     selectGraphNode(`inhabitant:${id}`);
   });
+}
+
+function showMissingSelection() {
+  ui.inspector.innerHTML = '<p class="muted">This selection is no longer present in the current snapshot. Choose another item.</p>';
+}
+
+function renderSelectedGraphInspector() {
+  const hadSelection = Boolean(selectedGraphNode);
+  const node = world.graph?.nodes.find(item => item.id === selectedGraphNode);
+  if (hadSelection && !node) {
+    selectedGraphNode = null; graphInspectorTab = "overview";
+    highlightGraphSelection();
+  }
+  if (graphInspectorMode === "health") { renderSchemaHealth(); return; }
+  if (node) { renderGraphInspector(node); return; }
+  if (hadSelection) showMissingSelection();
+  else {
+    ui.inspector.innerHTML = '<p class="muted">Choose a node to inspect its current projected fields, JSON source path and direct connections.</p>';
+  }
 }
 
 function svgElement(name, attributes = {}) {
@@ -300,12 +397,36 @@ function renderGraphHealthStatus() {
   ui.graphHealth.setAttribute("aria-label", `Structure health: ${count} issue${count === 1 ? "" : "s"}`);
 }
 
+function graphIdentity(graph) {
+  return JSON.stringify({
+    nodes: graph.nodes.map(node => [node.id, node.type, node.label, node.map]),
+    edges: graph.edges.map(edge => [edge.id, edge.source, edge.target, edge.relation]),
+  });
+}
+
+function moveGraphFocus(current, key) {
+  const nodes = [...ui.graphNodes.querySelectorAll(".graph-node")].filter(node => !node.hidden);
+  if (!nodes.length) return;
+  const index = Math.max(0, nodes.indexOf(current));
+  const target = key === "Home" ? nodes[0]
+    : key === "End" ? nodes[nodes.length - 1]
+    : nodes[(index + (key === "ArrowLeft" || key === "ArrowUp" ? -1 : 1) + nodes.length) % nodes.length];
+  nodes.forEach(node => node.setAttribute("tabindex", node === target ? "0" : "-1"));
+  target.focus();
+}
+
 function renderGraph() {
   const graph = world?.graph;
   if (!graph) return;
+  const identity = graphIdentity(graph);
+  if (identity === renderedGraphIdentity) {
+    renderGraphHealthStatus();
+    applyGraphVisibility();
+    applyGraphViewBox();
+    return;
+  }
   const firstLayout = graphPositions.size === 0;
   graphPositions = layoutWorldGraph(graph, graphPositions);
-  if (firstLayout) resetGraphView();
   renderGraphFilters(graph);
   renderGraphHealthStatus();
   ui.graphEdges.replaceChildren();
@@ -329,7 +450,7 @@ function renderGraph() {
     const position = graphPositions.get(node.id);
     const radius = node.type === "place" ? 11 : node.type === "inhabitant" ? 7.5 : node.type === "building" || node.type === "store" ? 7 : 6;
     const group = svgElement("g", {
-      transform: `translate(${position.x} ${position.y})`, class: "graph-node", tabindex: "0",
+      transform: `translate(${position.x} ${position.y})`, class: "graph-node", tabindex: "-1",
       role: "button", "aria-label": `${node.label}, ${graphTypeLabels[node.type] || node.type}`,
       "data-id": node.id, "data-type": node.type,
     });
@@ -352,12 +473,16 @@ function renderGraph() {
     group.addEventListener("click", event => { event.stopPropagation(); selectGraphNode(node.id); });
     group.addEventListener("keydown", event => {
       if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectGraphNode(node.id); }
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) {
+        event.preventDefault(); moveGraphFocus(group, event.key);
+      }
     });
     ui.graphNodes.append(group);
   });
-  if (selectedGraphNode && !graph.nodes.some(node => node.id === selectedGraphNode)) selectedGraphNode = null;
+  renderedGraphIdentity = identity;
   applyGraphVisibility();
-  applyGraphViewBox();
+  if (firstLayout) resetGraphView();
+  else applyGraphViewBox();
 }
 
 function applyGraphVisibility() {
@@ -369,6 +494,11 @@ function applyGraphVisibility() {
     element.hidden = !visibleNodes.has(element.dataset.id);
     element.style.display = element.hidden ? "none" : "";
   });
+  const focusable = [...ui.graphNodes.querySelectorAll(".graph-node")].filter(element => !element.hidden);
+  const activeNode = ui.graphNodes.contains(document.activeElement) ? document.activeElement : null;
+  const focusTarget = focusable.find(element => element.dataset.id === selectedGraphNode)
+    || focusable.find(element => element === activeNode) || focusable[0];
+  focusable.forEach(element => element.setAttribute("tabindex", element === focusTarget ? "0" : "-1"));
   let edgeCount = 0;
   ui.graphEdges.querySelectorAll(".graph-edge").forEach(element => {
     const visible = visibleNodes.has(element.dataset.source) && visibleNodes.has(element.dataset.target);
@@ -382,7 +512,10 @@ function applyGraphVisibility() {
 
 function selectGraphNode(nodeId, center = false) {
   const node = world?.graph?.nodes.find(item => item.id === nodeId);
-  if (!node) return;
+  if (!node) {
+    if (selectedGraphNode === nodeId) renderSelectedGraphInspector();
+    return;
+  }
   if (selectedGraphNode !== nodeId) graphInspectorTab = "overview";
   graphInspectorMode = "node";
   selectedGraphNode = nodeId;
@@ -530,7 +663,7 @@ function renderGraphInspector(node) {
   bindCharacterDirectionActions(node);
   bindCharacterStoryActions(node);
   if (selected("journey") && !characterStoryCache.has(node.ref)) loadCharacterStory(node);
-  if (selected("journey") && world.character_direction_available && !characterDirectionCache.has(node.ref)) loadCharacterDirection(node);
+  if (selected("journey") && world.character_direction_available) loadCharacterDirection(node);
   if (selected("model") && modelViewAvailable && !characterLensCache.has(node.ref)) loadCharacterLens(node);
 }
 
@@ -571,7 +704,7 @@ function characterPrivateJourneyMarkup(node) {
     return '<div class="timeline-note"><strong>Inner direction is local</strong><span>Self-authored goals and current grounded direction are available only in the loopback viewer. Public history remains available below.</span></div>';
   }
   const entry = characterDirectionCache.get(node.ref);
-  if (!entry || entry.status === "loading") {
+  if (!entry || entry.revision !== worldIdentity(world) || entry.status === "loading") {
     return '<div class="lens-loading"><span class="lens-spinner" aria-hidden="true"></span><p>Reading the character\'s current goal and direction…</p></div>';
   }
   if (entry.status === "error") {
@@ -600,6 +733,7 @@ function characterPrivateJourneyMarkup(node) {
   ].join("");
   return `
     <div class="lens-warning"><strong>Local character direction</strong><span>Goals guide attention but grant no action or guaranteed outcome. Memories, beliefs and model reasoning are not included.</span></div>
+    <div class="section-heading"><p class="json-note">Direction snapshot at tick ${escapeHtml(directionView.tick ?? "unknown")}${directionView.tick !== world.tick ? " · different from the displayed world tick" : ""}</p><button type="button" class="text-action" data-refresh-direction>Refresh direction</button></div>
     <section class="journey-section"><h3>What they want</h3>${wants || '<p class="muted">No active self-authored goal or reviewed broad ambition is recorded.</p>'}</section>
     <section class="journey-section"><h3>Current direction</h3>${direction.length ? `<ul class="detail-list">${direction.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : '<p class="muted">No currently grounded next step is recorded. This does not mean the character has no interests.</p>'}</section>
     ${commitments.length ? `<section class="journey-section"><h3>Public commitments</h3><ul class="detail-list">${commitments.map(item => `<li>${escapeHtml(item)}</li>`).join("")}</ul></section>` : ""}`;
@@ -621,7 +755,7 @@ function characterJourneyMarkup(node) {
     <li class="strategy-event recorded">
       <div class="strategy-event-heading"><span>Tick ${Number(event.tick).toLocaleString()}</span><span>${escapeHtml(event.category)} · ${escapeHtml(event.participation)}</span></div>
       <p>${escapeHtml(readableEventSummary(event))}</p>
-      <details><summary>${escapeHtml(title(event.type))} · evidence</summary><pre>${escapeHtml(JSON.stringify({ event_id:event.event_id, actor:event.actor, detail:event.detail }, null, 2))}</pre></details>
+      <details data-disclosure="event:${escapeHtml(event.event_id)}" ${disclosureOpen(node.id, 'event:' + event.event_id) ? "open" : ""}><summary>${escapeHtml(title(event.type))} · evidence</summary><pre>${escapeHtml(JSON.stringify({ event_id:event.event_id, actor:event.actor, detail:event.detail }, null, 2))}</pre></details>
     </li>`).join("");
   return `${privateMarkup}
     <section class="journey-section"><div class="section-heading"><h3>What they have done</h3><button type="button" class="text-action" data-refresh-story>Refresh</button></div>
@@ -653,10 +787,10 @@ function characterLensMarkup(node) {
     <div class="json-toolbar"><span>Exact WorldStore.agent_view</span><div><button type="button" class="text-action" data-refresh-lens>Refresh</button><button type="button" class="text-action" data-copy-lens="world">Copy JSON</button></div></div>
     <div class="json-tree lens-json" data-json-scroll="${escapeHtml(modelTreeState)}" aria-label="${escapeHtml(node.label)} model world view">${renderJsonTree(lens.world_view, 0, node, "$", null, modelTreeState)}</div>
     <p class="json-note">${escapeHtml(lens.evidence.scheduling_note)}</p>
-    <details class="prompt-block" data-inspector-disclosure="identity" ${inspectorDisclosureOpen(node, "identity") ? "open" : ""}><summary>Identity context</summary><pre>${escapeHtml(lens.identity_context)}</pre></details>
-    <details class="prompt-block" data-inspector-disclosure="contract" ${inspectorDisclosureOpen(node, "contract") ? "open" : ""}><summary>Dynamic action contract</summary><pre>${escapeHtml(lens.action_contract)}</pre></details>
-    <details class="prompt-block" data-inspector-disclosure="direct" ${inspectorDisclosureOpen(node, "direct") ? "open" : ""}><summary>Direct model input</summary><div class="prompt-actions"><button type="button" class="text-action" data-copy-lens="direct-system">Copy system</button><button type="button" class="text-action" data-copy-lens="direct-user">Copy user JSON</button></div><h4>System</h4><pre>${escapeHtml(lens.direct_model_input.system)}</pre><h4>User</h4><pre>${escapeHtml(lens.direct_model_input.user)}</pre></details>
-    <details class="prompt-block" data-inspector-disclosure="openchara" ${inspectorDisclosureOpen(node, "openchara") ? "open" : ""}><summary>OpenChara latest user message</summary><div class="prompt-actions"><button type="button" class="text-action" data-copy-lens="openchara-user">Copy message</button></div><p>${escapeHtml(lens.openchara_model_input.system_note)}</p><pre>${escapeHtml(lens.openchara_model_input.user)}</pre></details>`;
+    <details class="prompt-block" data-disclosure="identity" ${disclosureOpen(node.id, "identity") ? "open" : ""}><summary>Identity context</summary><pre>${escapeHtml(lens.identity_context)}</pre></details>
+    <details class="prompt-block" data-disclosure="contract" ${disclosureOpen(node.id, "contract") ? "open" : ""}><summary>Dynamic action contract</summary><pre>${escapeHtml(lens.action_contract)}</pre></details>
+    <details class="prompt-block" data-disclosure="direct" ${disclosureOpen(node.id, "direct") ? "open" : ""}><summary>Direct model input</summary><div class="prompt-actions"><button type="button" class="text-action" data-copy-lens="direct-system">Copy system</button><button type="button" class="text-action" data-copy-lens="direct-user">Copy user JSON</button></div><h4>System</h4><pre>${escapeHtml(lens.direct_model_input.system)}</pre><h4>User</h4><pre>${escapeHtml(lens.direct_model_input.user)}</pre></details>
+    <details class="prompt-block" data-disclosure="openchara" ${disclosureOpen(node.id, "openchara") ? "open" : ""}><summary>OpenChara latest user message</summary><div class="prompt-actions"><button type="button" class="text-action" data-copy-lens="openchara-user">Copy message</button></div><p>${escapeHtml(lens.openchara_model_input.system_note)}</p><pre>${escapeHtml(lens.openchara_model_input.user)}</pre></details>`;
 }
 
 function jsonTreeStateKey(node, surface) {
@@ -665,8 +799,32 @@ function jsonTreeStateKey(node, surface) {
   return stateKey;
 }
 
-function inspectorDisclosureOpen(node, disclosure) {
-  return inspectorDisclosureState.get(node.id)?.has(disclosure) || false;
+function disclosureScope(scope) {
+  return JSON.stringify([world?.world_id, scope]);
+}
+
+function disclosureOpen(scope, disclosure) {
+  return disclosureState.get(disclosureScope(scope))?.has(disclosure) || false;
+}
+
+function bindDisclosures(root, scope) {
+  const stateKey = disclosureScope(scope);
+  root.querySelectorAll("details[data-disclosure]").forEach(details => {
+    details.addEventListener("toggle", () => {
+      if (!details.isConnected) return;
+      const expanded = disclosureState.get(stateKey) || new Set();
+      if (details.open) expanded.add(details.dataset.disclosure);
+      else expanded.delete(details.dataset.disclosure);
+      disclosureState.set(stateKey, expanded);
+    });
+    details.querySelectorAll("pre").forEach((pre, index) => {
+      const scrollKey = JSON.stringify([stateKey, details.dataset.disclosure, index]);
+      pre.scrollTop = jsonScrollState.get(scrollKey) || 0;
+      pre.addEventListener("scroll", () => {
+        if (pre.isConnected) jsonScrollState.set(scrollKey, pre.scrollTop);
+      }, { passive: true });
+    });
+  });
 }
 
 function bindInspectorViewState(node) {
@@ -681,54 +839,53 @@ function bindInspectorViewState(node) {
     if (Number.isFinite(saved)) tree.scrollTop = saved;
     tree.addEventListener("scroll", () => jsonScrollState.set(tree.dataset.jsonScroll, tree.scrollTop), { passive: true });
   });
-  ui.inspector.querySelectorAll("details[data-inspector-disclosure]").forEach(details => details.addEventListener("toggle", () => {
-    const expanded = inspectorDisclosureState.get(node.id) || new Set();
-    if (details.open) expanded.add(details.dataset.inspectorDisclosure);
-    else expanded.delete(details.dataset.inspectorDisclosure);
-    inspectorDisclosureState.set(node.id, expanded);
-  }));
+  bindDisclosures(ui.inspector, node.id);
 }
 
 async function loadCharacterLens(node, force = false) {
   const existing = characterLensCache.get(node.ref);
   if (!force && existing) return;
   characterLensCache.set(node.ref, { status: "loading" });
-  if (selectedGraphNode === node.id && ["journey", "model"].includes(graphInspectorTab)) renderGraphInspector(node);
+  if (!ui.graphView.hidden && selectedGraphNode === node.id && ["journey", "model"].includes(graphInspectorTab)) renderSelectedGraphInspector();
   try {
     const data = await getCharacterLens(node.ref);
     characterLensCache.set(node.ref, { status: "ready", data });
   } catch (error) {
     characterLensCache.set(node.ref, { status: "error", message: error.message || String(error) });
   }
-  if (selectedGraphNode === node.id && ["journey", "model"].includes(graphInspectorTab)) renderGraphInspector(node);
+  if (!ui.graphView.hidden && selectedGraphNode === node.id && ["journey", "model"].includes(graphInspectorTab)) renderSelectedGraphInspector();
 }
 
 async function loadCharacterDirection(node, force = false) {
+  const revision = worldIdentity(world);
   const existing = characterDirectionCache.get(node.ref);
-  if (!force && existing) return;
-  characterDirectionCache.set(node.ref, { status: "loading" });
-  if (selectedGraphNode === node.id && graphInspectorTab === "journey") renderGraphInspector(node);
+  if (existing?.revision === revision && (!force || existing.status === "loading")) return;
+  const request = { status: "loading", revision };
+  characterDirectionCache.set(node.ref, request);
+  if (!ui.graphView.hidden && selectedGraphNode === node.id && graphInspectorTab === "journey") renderSelectedGraphInspector();
   try {
     const data = await getCharacterDirection(node.ref);
-    characterDirectionCache.set(node.ref, { status: "ready", data });
+    if (characterDirectionCache.get(node.ref) !== request || worldIdentity(world) !== revision) return;
+    characterDirectionCache.set(node.ref, { status: "ready", revision, data });
   } catch (error) {
-    characterDirectionCache.set(node.ref, { status: "error", message: error.message || String(error) });
+    if (characterDirectionCache.get(node.ref) !== request || worldIdentity(world) !== revision) return;
+    characterDirectionCache.set(node.ref, { status: "error", revision, message: error.message || String(error) });
   }
-  if (selectedGraphNode === node.id && graphInspectorTab === "journey") renderGraphInspector(node);
+  if (!ui.graphView.hidden && selectedGraphNode === node.id && graphInspectorTab === "journey") renderSelectedGraphInspector();
 }
 
 async function loadCharacterStory(node, force = false) {
   const existing = characterStoryCache.get(node.ref);
   if (!force && existing) return;
   characterStoryCache.set(node.ref, { status: "loading" });
-  if (selectedGraphNode === node.id && graphInspectorTab === "journey") renderGraphInspector(node);
+  if (!ui.graphView.hidden && selectedGraphNode === node.id && graphInspectorTab === "journey") renderSelectedGraphInspector();
   try {
     const data = await getCharacterStory(node.ref);
     characterStoryCache.set(node.ref, { status: "ready", data });
   } catch (error) {
     characterStoryCache.set(node.ref, { status: "error", message: error.message || String(error) });
   }
-  if (selectedGraphNode === node.id && graphInspectorTab === "journey") renderGraphInspector(node);
+  if (!ui.graphView.hidden && selectedGraphNode === node.id && graphInspectorTab === "journey") renderSelectedGraphInspector();
 }
 
 function bindCharacterLensActions(node) {
@@ -879,7 +1036,8 @@ function lifecycleLabel(value) {
   return incidentLifecycleMap[key] || (incidentLifecycle.includes(key) ? key : "unknown");
 }
 function operationalSignal(signal) {
-  const lifecycle = lifecycleLabel(signal.lifecycle || signal.incident_status || signal.status);
+  const statusLifecycle = { attention: "detected", broken: "detected", repairing: "repairing", healthy: "recovered" };
+  const lifecycle = lifecycleLabel(signal.lifecycle || signal.incident_status || statusLifecycle[signal.status] || signal.status);
   return {
     lifecycle: signal.evidence_known === false ? "unknown" : lifecycle,
     component: signal.responsible_component || signal.component || signal.owner || "Unknown component",
@@ -889,6 +1047,7 @@ function operationalSignal(signal) {
 
 function renderOperationalHealth(snapshot) {
   operationalHealthSnapshot = snapshot;
+  ui.operationalHealthCopy.disabled = !snapshot.operational_brief;
   const status = snapshot.status || "unknown";
   const repair = snapshot.repair || {};
   const window = snapshot.window || {};
@@ -896,28 +1055,44 @@ function renderOperationalHealth(snapshot) {
   ui.operationalHealthLabel.textContent = snapshot.headline || title(status);
   ui.operationalHealthObserved.textContent = snapshot.observed_at
     ? `Sampled ${new Date(snapshot.observed_at).toLocaleTimeString()}` : "Observation time unknown";
+  ui.operationalHealthOpen.title = ui.operationalHealthObserved.textContent;
   const signals = (snapshot.signals || []).map(signal => ({ ...signal, ...operationalSignal(signal) }));
   const overall = status === "healthy" && signals.some(signal => signal.lifecycle === "unknown") ? "unknown" : status;
+  const attentionHeading = signals.length
+    ? `${signals.length.toLocaleString()} signal${signals.length === 1 ? "" : "s"} determine this status`
+    : "No monitored signal needs attention";
   ui.operationalHealthContent.innerHTML = `
     <div class="operational-overview">
       <section class="operational-card" data-status="${escapeHtml(overall)}"><span>Overall</span><strong>${escapeHtml(overall === "unknown" ? "Unknown evidence" : (snapshot.headline || title(status)))}</strong><p>Ticks ${escapeHtml(healthValue(window.tick_start))}–${escapeHtml(healthValue(window.tick_end))} · state/history ${escapeHtml(pretty(window.state_event_alignment || "unknown"))}</p></section>
       <section class="operational-card" data-status="${escapeHtml(repair.status === "active" ? "repairing" : repair.status === "blocked" ? "broken" : "healthy")}"><span>Self-healing</span><strong>${escapeHtml(title(repair.status || "unknown"))}</strong><p>${escapeHtml(repair.detail || "Repair state is unavailable.")} Repairs may change reviewed source only through disposable validation and protected delivery; they never rewrite live world state directly.</p></section>
     </div>
-    <div class="operational-signals">${signals.map(signal => `<article class="operational-signal" data-status="${escapeHtml(signal.lifecycle)}"><h3>${escapeHtml(signal.title || "Operational signal")}</h3><p>${escapeHtml(signal.detail || "Evidence detail is unknown.")}</p><small>Lifecycle: ${escapeHtml(signal.lifecycle)} · Responsible component: ${escapeHtml(signal.component)} · Permitted next action: ${escapeHtml(signal.nextAction)}</small></article>`).join("") || '<article class="operational-card" data-status="unknown"><strong>Unknown evidence</strong><p>No operational signal was returned by the status API.</p></article>'}</div>`;
+    <section class="operational-explanation" data-status="${escapeHtml(overall)}">
+      <span>${status === "healthy" ? "Why this is healthy" : "Why this needs attention"}</span>
+      <strong>${escapeHtml(attentionHeading)}</strong>
+      <p>${status === "attention" ? "Yellow means these bounded findings should be reviewed; it does not by itself mean the world state is corrupt." : "The overall status is determined by the findings listed below."}</p>
+    </section>
+    <div class="operational-signals">${signals.map((signal, index) => `<article class="operational-signal" data-status="${escapeHtml(signal.lifecycle)}" data-severity="${escapeHtml(signal.status || "unknown")}"><div class="operational-signal-heading"><span>${index + 1}</span><h3>${escapeHtml(signal.title || "Operational signal")}</h3></div><p>${escapeHtml(signal.detail || "Evidence detail is unknown.")}</p><dl><div><dt>State</dt><dd>${escapeHtml(signal.lifecycle)}</dd></div><div><dt>Responsible component</dt><dd>${escapeHtml(signal.component)}</dd></div><div><dt>Permitted next action</dt><dd>${escapeHtml(signal.nextAction)}</dd></div></dl></article>`).join("") || '<article class="operational-card" data-status="healthy"><strong>No findings</strong><p>No monitored operational signal currently needs attention.</p></article>'}</div>`;
 }
 
-async function refreshOperationalHealth() {
+async function refreshOperationalHealth({ force = false } = {}) {
+  if (operationalHealthInFlight || (!force && Date.now() < operationalHealthRetryAfter)) return;
+  operationalHealthInFlight = true;
   ui.operationalHealthRefresh.disabled = true;
+  ui.operationalHealthOpen.dataset.status = "unknown";
+  ui.operationalHealthLabel.textContent = "Checking health…";
   try {
     renderOperationalHealth(await getOperationalHealth());
   } catch (error) {
     operationalHealthSnapshot = null;
+    ui.operationalHealthCopy.disabled = true;
     ui.operationalHealthOpen.dataset.status = "unknown";
     ui.operationalHealthLabel.textContent = "Health unknown";
     if (ui.operationalHealth.open) {
       ui.operationalHealthContent.innerHTML = `<div class="lens-error"><strong>Operational health unavailable</strong><p>${escapeHtml(error.message || String(error))}</p></div>`;
     }
   } finally {
+    operationalHealthRetryAfter = Date.now() + OPERATIONAL_HEALTH_REFRESH_MS;
+    operationalHealthInFlight = false;
     ui.operationalHealthRefresh.disabled = false;
   }
 }
@@ -932,7 +1107,9 @@ function renderModelHealth(snapshot) {
   const limits = current.limits || {};
   const history = snapshot.history || {};
   const routes = history.routes || {};
-  const overallStatus = current.status || qwen.status || "unavailable";
+  const capacityStatus = current.status || qwen.status || "unavailable";
+  const historyIncomplete = ["world_busy", "stale"].includes(history.status);
+  const overallStatus = capacityStatus === "healthy" && historyIncomplete ? "partial" : capacityStatus;
   ui.engineRoomOpen.dataset.status = overallStatus;
   ui.engineRoomObserved.textContent = `Sampled ${new Date(snapshot.observed_at).toLocaleTimeString()}`;
   const reason = qwen.reason ? ` · ${pretty(qwen.reason)}` : "";
@@ -955,7 +1132,7 @@ function renderModelHealth(snapshot) {
   if (!historyKnown) evidenceMessages.push("A world turn is active. Recent route history was left unknown so this view could return immediately.");
   if (historyStale) evidenceMessages.push(`A world turn is active. Route history is the last lock-proven sample from ${new Date(history.measured_at).toLocaleTimeString()}.`);
   ui.engineRoomContent.innerHTML = `
-    <div class="engine-room-status"><span class="health-dot" data-status="${escapeHtml(overallStatus)}" aria-hidden="true"></span><strong>${escapeHtml(overallStatus)}</strong><span>Laya ${escapeHtml(laya.status || "unknown")} · Qwen router ${escapeHtml(qwen.router_mode || "unknown")}${escapeHtml(reason)} · gate ${escapeHtml(current.gate || "unknown")}</span></div>
+    <div class="engine-room-status"><span class="health-dot" data-status="${escapeHtml(overallStatus)}" aria-hidden="true"></span><strong>${escapeHtml(overallStatus)}</strong><span>Capacity ${escapeHtml(capacityStatus)} · history ${escapeHtml(pretty(history.status || "unknown"))} · Laya ${escapeHtml(laya.status || "unknown")} · Qwen router ${escapeHtml(qwen.router_mode || "unknown")}${escapeHtml(reason)} · gate ${escapeHtml(current.gate || "unknown")}</span></div>
     ${evidenceMessages.length ? `<div class="engine-evidence" role="status"><strong>What is not currently proven</strong><ul>${evidenceMessages.map(message => `<li>${escapeHtml(message)}</li>`).join("")}</ul></div>` : '<div class="engine-evidence measured"><strong>Current telemetry and recent route history are available.</strong></div>'}
     <div class="route-strip">
       <section class="route-card" data-route="laya"><div class="route-card-heading"><h3>Laya</h3><span>System 1</span></div><dl>
@@ -1006,7 +1183,8 @@ function renderModelHealth(snapshot) {
           ${engineMetric("Qwen routes", healthValue(routes["local:qwen"]))}
           ${engineMetric("Luna routes", healthValue(lunaRouteCount))}
           ${engineMetric("Pressure ticks", healthValue(history.pressure_ticks))}
-          ${engineMetric("Evidence", current.state_evidence || "unknown")}
+          ${engineMetric("Capacity evidence", current.state_evidence || "unknown")}
+          ${engineMetric("Route history", history.status || "unknown")}
         </div>
         <ul class="engine-reasons">${reasons.map(([name, count]) => `<li><span>${escapeHtml(pretty(name))}</span><strong>${Number(count).toLocaleString()}</strong></li>`).join("") || '<li><span>No recorded capacity decisions</span><strong>—</strong></li>'}</ul>
       </section>
@@ -1029,7 +1207,7 @@ async function refreshModelHealth({ preserveContent = false } = {}) {
       && modelHealthSnapshot !== null
       && snapshot.history?.status === "world_busy";
     if (!historyStillBusy) renderModelHealth(snapshot);
-    if (snapshot.history?.status === "world_busy" && ui.engineRoom.open) {
+    if (snapshot.history?.refresh_pending && ui.engineRoom.open) {
       modelHealthRetryTimer = window.setTimeout(
         () => refreshModelHealth({ preserveContent: true }), 5000,
       );
@@ -1066,9 +1244,12 @@ function applyGraphViewBox() {
   if (ui.graph.dataset.labelScale === String(unit)) return;
   ui.graph.dataset.labelScale = String(unit);
   const labels = [];
-  // Keep place names and hit targets readable when the world grows or zooms out.
-  ui.graphNodes.querySelectorAll('.graph-node[data-type="place"]').forEach(node => {
+  // Keep every marker and label screen-sized even when the frontier is much
+  // larger than the opening village-and-Necropolis view.
+  ui.graphNodes.querySelectorAll(".graph-node").forEach(node => {
     for (const child of node.children) child.setAttribute("transform", `scale(${unit})`);
+  });
+  ui.graphNodes.querySelectorAll('.graph-node[data-type="place"]').forEach(node => {
     const label = node.querySelector(".node-label");
     label.setAttribute("x", "0"); label.setAttribute("y", "-16");
     label.setAttribute("text-anchor", "middle");
@@ -1084,7 +1265,8 @@ function applyGraphViewBox() {
 
 function resetGraphView({ fit = false } = {}) {
   const types = graphFiltersInitialized ? visibleGraphTypes : defaultGraphTypes;
-  const points = (world?.graph?.nodes || []).filter(node => types.has(node.type))
+  const graph = world?.graph || {};
+  const points = selectGraphViewNodes(graph, types, fit)
     .map(node => graphPositions.get(node.id)).filter(Boolean);
   if (!points.length) return;
   const left = Math.min(...points.map(point => point.x));
@@ -1092,15 +1274,8 @@ function resetGraphView({ fit = false } = {}) {
   const spanX = Math.max(700, Math.max(...points.map(point => point.x)) - left);
   const spanY = Math.max(450, Math.max(...points.map(point => point.y)) - top);
   // Leave room for screen-sized labels at the outermost places.
-  graphViewBox = { x: left - spanX * .2, y: top - spanY * .15,
-    width: spanX * 1.4, height: spanY * 1.3 };
-  if (!fit) {
-    // A closer default view separates screen-sized dots; Fit map shows all edges.
-    graphViewBox.x += graphViewBox.width * .075;
-    graphViewBox.y += graphViewBox.height * .075;
-    graphViewBox.width *= .85;
-    graphViewBox.height *= .85;
-  }
+  graphViewBox = { x: left - spanX * .12, y: top - spanY * .12,
+    width: spanX * 1.24, height: spanY * 1.24 };
   applyGraphViewBox();
 }
 
@@ -1148,8 +1323,9 @@ function renderStory() {
       <div class="story-entry-heading"><span>Tick ${Number(event.tick).toLocaleString()}</span><span>${escapeHtml(title(event.category))}</span></div>
       <p>${escapeHtml(readableEventSummary(event))}</p>
       <div class="story-entry-meta">${escapeHtml((event.participants || []).map(storyPersonName).join(" · ") || storyPersonName(event.actor))} · ${escapeHtml(title(event.type))}</div>
-      <details><summary>Authoritative evidence</summary><pre>${escapeHtml(JSON.stringify({ event_id:event.event_id, sequence:event.sequence, payload:event.detail }, null, 2))}</pre></details>
+      <details data-disclosure="event:${escapeHtml(event.event_id)}" ${disclosureOpen("world-story", 'event:' + event.event_id) ? "open" : ""}><summary>Authoritative evidence</summary><pre>${escapeHtml(JSON.stringify({ event_id:event.event_id, sequence:event.sequence, payload:event.detail }, null, 2))}</pre></details>
     </li>`).join("") || `<li class="empty">No milestones match these filters.</li>`;
+  bindDisclosures(ui.storyFeed, "world-story");
   const previous = storyPreviousSeen;
   const unseen = previous ? (storySnapshot.events || []).filter(event => event.sequence > previous).length : null;
   const oldestLoaded = storySnapshot.events?.[0]?.sequence;
@@ -1159,11 +1335,18 @@ function renderStory() {
 }
 
 async function refreshStory() {
+  const generation = ++storyRequestGeneration;
+  const worldId = world.world_id, publication = liveSnapshotBase;
+  const current = () => generation === storyRequestGeneration
+    && worldId === world.world_id && publication === liveSnapshotBase;
+  const previousSeen = storySeenSequence();
   ui.storyRefresh.disabled = true;
   ui.storyStatus.textContent = "Reading the world story…";
   try {
-    storyPreviousSeen = storySeenSequence();
-    storySnapshot = await getWorldStory();
+    const snapshot = await getWorldStory();
+    if (!current()) return;
+    storyPreviousSeen = previousSeen;
+    storySnapshot = snapshot;
     const selected = ui.storyPerson.value;
     const names = new Map(world.inhabitants.map(person => [person.id, person.name]));
     const participants = [...new Set((storySnapshot.events || []).flatMap(event => event.participants || []))]
@@ -1174,8 +1357,15 @@ async function refreshStory() {
     rememberStorySequence(storySnapshot.through_sequence);
     clearError();
   } catch (error) {
+    if (!current()) return;
+    ui.storyStatus.textContent = "The world story is unavailable. Try refreshing.";
     ui.storyFeed.innerHTML = `<li class="lens-error"><strong>Story unavailable</strong><p>${escapeHtml(error.message || String(error))}</p></li>`;
-  } finally { ui.storyRefresh.disabled = false; }
+  } finally {
+    if (generation === storyRequestGeneration) {
+      ui.storyRefresh.disabled = false;
+      if (!current()) ui.storyStatus.textContent = "The world publication changed. Refresh to read its story.";
+    }
+  }
 }
 
 function activityTime(value) {
@@ -1241,7 +1431,7 @@ function renderLogosActivity(snapshot) {
           <div><dt>Started</dt><dd>${escapeHtml(activityTime(run.started_at))}</dd></div>
           <div><dt>Completed</dt><dd>${escapeHtml(activityTime(run.completed_at))}</dd></div>
         </dl>
-        ${publicStatic ? "" : `${run.influence_summary ? `<p class="activity-narrative"><strong>Sol influence</strong>${escapeHtml(run.influence_summary)}</p>` : ""}<div class="activity-meta">${run.source_finding_id ? `Finding ${escapeHtml(run.source_finding_id)} · ` : ""}${run.branch ? escapeHtml(run.branch) : "No candidate branch recorded"}${candidateUrl(run.pull_request) ? ` · <a href="${escapeHtml(candidateUrl(run.pull_request))}" target="_blank" rel="noreferrer">Open PR</a>` : ""}</div>`}
+        ${publicStatic ? "" : `${run.influence_summary ? `<p class="activity-narrative"><strong>Sol influence</strong>${escapeHtml(run.influence_summary)}</p>` : ""}${run.failure ? `<p class="activity-narrative"><strong>Failure</strong>${escapeHtml(run.failure)}</p>` : ""}<div class="activity-meta">${run.source_finding_id ? `Finding ${escapeHtml(run.source_finding_id)} · ` : ""}${run.branch ? escapeHtml(run.branch) : "No candidate branch recorded"}${candidateUrl(run.pull_request) ? ` · <a href="${escapeHtml(candidateUrl(run.pull_request))}" target="_blank" rel="noreferrer">Open PR</a>` : ""}</div>`}
       </article>`;
     }).join("") || activityEmpty("No Logos heartbeat evidence is available yet.")}</div></section>`;
 }
@@ -1303,16 +1493,22 @@ async function refreshAutomationActivity(kind) {
 function setView(view) {
   const graphActive = view === "graph", logosActive = view === "logos", labActive = view === "lab";
   const storyActive = view === "story", chronicleActive = view === "chronicle";
+  const characterReplayActive = view === "character-replay";
+  ui.characterReplayView.hidden = !characterReplayActive;
+  characterReplayer.setActive(characterReplayActive);
+  if (characterReplayActive) stopReplay();
   ui.storyView.hidden = !storyActive; ui.graphView.hidden = !graphActive; ui.chronicleView.hidden = !chronicleActive;
   ui.logosView.hidden = !logosActive; ui.logosLabView.hidden = !labActive;
-  [[ui.storyTab, storyActive], [ui.chronicleTab, chronicleActive], [ui.graphTab, graphActive], [ui.logosTab, logosActive], [ui.logosLabTab, labActive]].forEach(([tab, active]) => {
+  [[ui.storyTab, storyActive], [ui.chronicleTab, chronicleActive], [ui.graphTab, graphActive], [ui.characterReplayTab, characterReplayActive], [ui.logosTab, logosActive], [ui.logosLabTab, labActive]].forEach(([tab, active]) => {
     tab.classList.toggle("active", active); tab.setAttribute("aria-selected", String(active));
+    tab.setAttribute("tabindex", active ? "0" : "-1");
   });
   if (graphActive) {
+    renderGraph();
     applyGraphViewBox();
     if (graphInspectorMode === "health") renderSchemaHealth();
     else if (selectedGraphNode) selectGraphNode(selectedGraphNode);
-    else ui.inspector.innerHTML = '<p class="muted">Choose a node to inspect its current projected fields, JSON source path and direct connections.</p>';
+    else renderSelectedGraphInspector();
   } else if (logosActive) {
     ui.inspector.innerHTML = '<p class="muted">Logos is the authoritative source-engineering heartbeat. This tab shows bounded scheduler evidence, not raw model output.</p>';
     if (!logosSnapshot) refreshAutomationActivity("logos");
@@ -1326,15 +1522,29 @@ function setView(view) {
 }
 
 async function loadEvents(first, last) {
+  const generation = ++eventRequestGeneration;
+  const worldId = world.world_id;
   stopReplay();
   first = Math.max(0, Math.min(world.tick, Number(first) || 0));
   last = Math.max(first, Math.min(world.tick, Number(last) || first));
   ui.from.value = String(first); ui.to.value = String(last); ui.slider.value = String(first);
   ui.selected.textContent = first === last ? `Tick ${first.toLocaleString()}` : `Ticks ${first.toLocaleString()}–${last.toLocaleString()}`;
   ui.status.textContent = "Reading the world record…";
-  eventSnapshot = await getEvents(first, last);
-  renderEventSnapshot();
-  clearError();
+  eventSnapshot = null;
+  ui.feed.innerHTML = '<li class="empty">Loading the selected tick range…</li>';
+  ui.replay.disabled = true;
+  try {
+    const snapshot = await getEvents(first, last);
+    if (generation !== eventRequestGeneration || worldId !== world.world_id) return;
+    eventSnapshot = snapshot;
+    renderEventSnapshot();
+    clearError();
+  } catch (error) {
+    if (generation !== eventRequestGeneration || worldId !== world.world_id) return;
+    ui.status.textContent = "The selected tick range is unavailable.";
+    ui.feed.innerHTML = '<li class="empty">Could not load this tick range. Try again.</li>';
+    throw error;
+  }
 }
 
 function eventGroup(event) {
@@ -1344,9 +1554,11 @@ function eventGroup(event) {
 }
 
 function renderEventSnapshot() {
+  stopReplay();
   if (!eventSnapshot) return;
   const selected = ui.eventFilter.value;
   const events = eventSnapshot.events.filter(event => selected === "all" || eventGroup(event) === selected);
+  ui.replay.disabled = events.length === 0;
   ui.feed.innerHTML = events.map(event => `
     <li class="event" data-sequence="${event.sequence}">
       <div class="event-tick">TICK ${event.tick.toLocaleString()}</div>
@@ -1375,7 +1587,8 @@ function replay() {
       item.classList.toggle("replay-active", index === position);
       if (index <= position) item.classList.remove("replay-pending");
     });
-    events[position].scrollIntoView({ behavior: "smooth", block: "center" });
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    events[position].scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
     position += 1;
     if (position >= events.length) stopReplay();
   };
@@ -1388,21 +1601,32 @@ async function refreshWorld(initial = false) {
   worldRefreshInFlight = true;
   try {
     const previousHead = world?.event_head?.event_id;
-    world = await getWorld();
+    const candidate = await getWorld();
+    world = candidate;
+    renderWorldFreshness();
     if (ui.engineRoom.open) {
       worldRenderDeferred = true;
       return;
     }
-    renderWorld();
+    if (renderedWorldIdentity !== worldIdentity(world)) renderWorld();
+    clearError();
     if (initial) {
-      await Promise.all([loadEvents(world.tick, world.tick), refreshStory()]);
+      Promise.all([loadEvents(world.tick, world.tick), refreshStory()]).catch(showError);
     } else if (ui.follow.checked && previousHead !== world.event_head.event_id) {
-      await Promise.all([loadEvents(world.tick, world.tick), refreshStory()]);
+      Promise.all([loadEvents(world.tick, world.tick), refreshStory()]).catch(showError);
     }
   } finally {
     worldRefreshInFlight = false;
+    // Recordings can arrive while the last lock-proven world snapshot is
+    // unchanged. Refresh their independent read-only index on this cadence too.
+    characterReplayer.refresh();
+    // Health can change while the world tick stays still or its read fails.
+    // Reuse this cadence, with a separate bounded interval and in-flight guard.
+    if (!document.hidden && viewerConfig.mode !== "static" && world?.operational_health_available) refreshOperationalHealth();
   }
 }
+
+const characterReplayer = CharacterReplay.mount(ui.characterReplayView, getJson);
 
 ui.slider.addEventListener("input", () => {
   ui.from.value = ui.to.value = ui.slider.value;
@@ -1416,8 +1640,20 @@ ui.follow.addEventListener("change", () => { if (ui.follow.checked) loadEvents(w
 ui.storyTab.addEventListener("click", () => setView("story"));
 ui.chronicleTab.addEventListener("click", () => setView("chronicle"));
 ui.graphTab.addEventListener("click", () => setView("graph"));
+ui.characterReplayTab.addEventListener("click", () => setView("character-replay"));
 ui.logosTab.addEventListener("click", () => setView("logos"));
 ui.logosLabTab.addEventListener("click", () => setView("lab"));
+const surfaceTabs = [ui.storyTab, ui.chronicleTab, ui.graphTab, ui.characterReplayTab, ui.logosTab, ui.logosLabTab];
+document.querySelector(".surface-tabs").addEventListener("keydown", event => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const available = surfaceTabs.filter(tab => !tab.hidden);
+  const index = Math.max(0, available.indexOf(document.activeElement));
+  const target = event.key === "Home" ? available[0]
+    : event.key === "End" ? available[available.length - 1]
+    : available[(index + (event.key === "ArrowLeft" ? -1 : 1) + available.length) % available.length];
+  event.preventDefault();
+  target.focus(); target.click();
+});
 ui.logosRefresh.addEventListener("click", () => refreshAutomationActivity("logos"));
 ui.logosLabRefresh.addEventListener("click", () => refreshAutomationActivity("lab"));
 ui.storyRefresh.addEventListener("click", () => refreshStory().catch(showError));
@@ -1438,10 +1674,13 @@ if (viewerConfig.mode === "static") {
 }
 ui.operationalHealthOpen.addEventListener("click", () => {
   ui.operationalHealth.showModal();
-  refreshOperationalHealth();
+  refreshOperationalHealth({ force: true });
 });
 ui.operationalHealthClose.addEventListener("click", () => ui.operationalHealth.close());
-ui.operationalHealthRefresh.addEventListener("click", refreshOperationalHealth);
+ui.operationalHealthCopy.addEventListener("click", () => {
+  if (operationalHealthSnapshot?.operational_brief) copyInspectorText(operationalHealthSnapshot.operational_brief, ui.operationalHealthCopy, "Copied");
+});
+ui.operationalHealthRefresh.addEventListener("click", () => refreshOperationalHealth({ force: true }));
 ui.operationalHealth.addEventListener("click", event => { if (event.target === ui.operationalHealth) ui.operationalHealth.close(); });
 ui.engineRoomOpen.addEventListener("click", () => {
   ui.engineRoom.showModal();
@@ -1518,5 +1757,27 @@ ui.graphTooltip.addEventListener("focusin", cancelGraphTooltipHide);
 ui.graphTooltip.addEventListener("focusout", event => {
   if (!ui.graphTooltip.contains(event.relatedTarget)) scheduleGraphTooltipHide();
 });
-refreshWorld(true).catch(showError);
-window.setInterval(() => refreshWorld(false).catch(showError), 3000);
+function scheduleWorldRefresh(delay = 3000) {
+  if (worldRefreshTimer !== null) window.clearTimeout(worldRefreshTimer);
+  worldRefreshTimer = null;
+  if (document.hidden) return;
+  worldRefreshTimer = window.setTimeout(async () => {
+    try { await refreshWorld(false); }
+    catch (error) { showWorldError(error); }
+    finally { scheduleWorldRefresh(); }
+  }, delay);
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (worldRefreshTimer !== null) window.clearTimeout(worldRefreshTimer);
+    worldRefreshTimer = null;
+  } else {
+    scheduleWorldRefresh(0);
+  }
+});
+
+refreshWorld(true).then(
+  () => scheduleWorldRefresh(),
+  error => { showWorldError(error); scheduleWorldRefresh(500); },
+);
