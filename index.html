@@ -2,7 +2,7 @@
 <html lang="en" data-mode="published-live">
 <head>
   <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; connect-src https://brackenford-live-projection.dear-shark-5803.chatgpt.site; script-src 'sha256-P3pXL4NjcH7yG9i8dTCOlZoKnQtc79UmrtuAtcz72T8=' 'sha256-mo6EmcMDyXud8CPOLv9OitUsqBcu7AirbsoiA/VFbgA=' 'sha256-zj4UwGo8VCqvtDZAwlyhj3YSF4/TSV/rTWlYcPIDElc='; style-src 'sha256-GVBWmdJ2zpuuDn+oaLL/Yen9Y3sReLIad7VpGIDAIyU='">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; connect-src https://brackenford-live-projection.dear-shark-5803.chatgpt.site; script-src 'sha256-Dxi1x0mMEJer7MX5XJCvMLDzJanLTw5X1uomOtYD6X8=' 'sha256-mo6EmcMDyXud8CPOLv9OitUsqBcu7AirbsoiA/VFbgA=' 'sha256-zj4UwGo8VCqvtDZAwlyhj3YSF4/TSV/rTWlYcPIDElc='; style-src 'sha256-ROCdd2fqIkHdTk5ejs5HG9uSsuMAR2DE7tJMLK0WL2M='">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Read-only native public view of the Rust world.">
   <title>Rust World Viewer</title>
@@ -49,6 +49,12 @@ pre { overflow:auto; max-height:13rem; padding:.65rem; background:var(--bg); whi
 .graph-controls { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; margin-top:.8rem; }
 .graph-controls label { display:flex; align-items:center; gap:.5rem; }
 .graph-controls p,.graph-note { color:var(--muted); font-size:.75rem; }
+.graph-filters { border:1px solid var(--line); margin:1rem 0 .5rem; padding:.6rem .8rem; }
+.graph-filters legend { color:var(--muted); font-size:.75rem; }
+.graph-controls select,.graph-controls input[type="search"] { min-width:8rem; max-width:100%; }
+.history-note { color:var(--muted); font-size:.75rem; line-height:1.5; }
+.button-link { padding:.5rem .7rem; color:var(--ink); background:var(--raised); border:1px solid var(--line); border-radius:4px; text-decoration:none; font-size:.8rem; }
+.button-link[hidden] { display:none; }
 .graph-edge { stroke:#4b6470; stroke-width:4; }
 .graph-node circle { fill:#1c3038; stroke:#80c8d0; stroke-width:3; }
 .graph-node[data-type="place"] circle { fill:#553f21; stroke:#e6b75e; }
@@ -94,18 +100,20 @@ button:disabled { opacity:.4; cursor:default; }
   <header class="topbar">
     <div><p class="eyebrow">RUST · PUBLIC WORLD · <span id="view-mode">Snapshot</span></p><h1>World record</h1><p id="live-status" class="live-status" role="status" hidden></p></div>
     <div class="snapshot-summary"><span>Tick <strong id="tick">—</strong></span><span>Revision <strong id="revision">—</strong></span><span>Events <strong id="event-head">—</strong></span></div>
-    <div class="actions"><button id="refresh" type="button">Refresh</button><button id="load-history" type="button">Load full history</button></div>
+    <div class="actions"><a id="world-archive" class="button-link" href="archive.html" hidden>Older world archive</a><button id="refresh" type="button">Refresh</button><button id="load-history" type="button">Load full history</button></div>
   </header>
   <p id="error" class="error" role="alert" hidden></p>
   <main class="layout">
     <aside class="directory"><section><h2>People</h2><nav id="people"></nav></section><section><h2>Places</h2><nav id="places"></nav></section></aside>
     <section class="content">
+      <p id="history-note" class="history-note"></p>
       <div class="tabs" role="tablist"><button class="tab active" data-tab="story" type="button">World story</button><button class="tab" data-tab="events" type="button">All events</button><button class="tab" data-tab="graph" type="button">Graph</button></div>
       <section id="story-panel" class="panel"><div class="panel-heading"><div><p class="eyebrow">PUBLIC MILESTONES</p><h2>World story</h2></div><p id="history-status"></p></div><div id="story-controls" class="controls"></div><ol id="story-events" class="events"></ol></section>
       <section id="events-panel" class="panel" hidden><div class="panel-heading"><div><p class="eyebrow">PUBLIC EVENT RECORD</p><h2>All events</h2></div></div><div id="event-controls" class="controls"></div><ol id="all-events" class="events"></ol></section>
       <section id="graph-panel" class="panel" hidden>
         <div class="panel-heading"><div><p class="eyebrow">CURRENT SNAPSHOT</p><h2>World map</h2><p>Arrows show route direction. Schematic layout, not to scale. Scroll to zoom.</p></div><button id="graph-fit" type="button">Fit map</button></div>
-        <div class="graph-controls"><label><input id="graph-details" type="checkbox"> Show resources, buildings and other details</label><p id="graph-status" role="status"></p></div>
+        <fieldset class="graph-filters"><legend>Map filters</legend><div id="graph-layers" class="graph-controls"></div><div class="graph-controls"><label><input id="graph-details" type="checkbox"> All detail layers</label><label>Place <select id="graph-place"><option value="all">All places</option></select></label><label>Search <input id="graph-search" type="search" placeholder="Name or ID"></label></div></fieldset>
+        <p id="graph-status" class="graph-note" role="status"></p>
         <p class="graph-note">Situations are temporary world events, such as market days. Completed and expired situations are hidden.</p>
         <svg id="graph" viewBox="0 0 1400 900" role="img" aria-label="Current public world graph"><defs><marker id="route-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#a1b6bf"></path></marker></defs><g id="graph-edges"></g><g id="graph-nodes"></g></svg>
       </section>
@@ -394,6 +402,29 @@ function graphFromState(state, { details = true } = {}) {
   return { nodes:visibleNodes, edges:edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target)), initial_place_ids:[] };
 }
 
+const graphLayers = [
+  { id:"places", label:"Places", types:["place"], initial:true },
+  { id:"people", label:"People", types:["inhabitant"], initial:true },
+  { id:"situations", label:"Active situations", types:["situation"], initial:true },
+  { id:"resources", label:"Resources and crops", types:["resource", "crop"] },
+  { id:"buildings", label:"Buildings and settlements", types:["site", "infrastructure", "settlement"] },
+  { id:"stores", label:"Stores", types:["store"] },
+  { id:"weather", label:"Weather", types:["weather"] },
+  { id:"communities", label:"Communities", types:["community", "faction"] },
+];
+function filterGraph(graph, { types, place = "all", query = "" } = {}) {
+  const allowed = types ? new Set(types) : new Set(graph.nodes.map(node => node.type));
+  const text = query.trim().toLocaleLowerCase();
+  const located = new Set(graph.edges.filter(edge => edge.relation === "contains" && edge.source === nodeId("place", place)).map(edge => edge.target));
+  const matches = graph.nodes.filter(node => allowed.has(node.type)
+    && (place === "all" || node.id === nodeId("place", place) || located.has(node.id))
+    && (!text || `${node.label} ${node.ref}`.toLocaleLowerCase().includes(text)));
+  const ids = new Set(matches.map(node => node.id));
+  // Keep visible place anchors for matching people and physical entities.
+  if (allowed.has("place")) for (const edge of graph.edges) if (edge.relation === "contains" && ids.has(edge.target)) ids.add(edge.source);
+  return { ...graph, nodes:graph.nodes.filter(node => ids.has(node.id)), edges:graph.edges.filter(edge => ids.has(edge.source) && ids.has(edge.target)) };
+}
+
 function filterEvents(events, filter = {}) {
   const first = tickValue(filter.fromTick ?? 0), last = tickValue(filter.toTick ?? "999999999999999999999999999999");
   if (first === null || last === null || first > last) return [];
@@ -414,7 +445,7 @@ function stateDirectory(state) {
   return { people, places };
 }
 
-if (typeof module !== "undefined") module.exports = { graphFromState, filterEvents, stateDirectory, tickValue, personName, activeSituation };
+if (typeof module !== "undefined") module.exports = { graphFromState, filterGraph, graphLayers, filterEvents, stateDirectory, tickValue, personName, activeSituation };
 
 if (typeof document !== "undefined") (() => {
   const $ = selector => document.querySelector(selector);
@@ -433,6 +464,12 @@ if (typeof document !== "undefined") (() => {
   const liveStatus = $("#live-status");
   const embedded = JSON.parse($("#world-data").textContent || "null");
   const liveReader = liveConfig ? RustPublicLive.createReader(liveConfig, { initial:embedded }) : null;
+  const layerControls = new Map();
+  for (const layer of graphLayers) {
+    const wrapper = el("label"), input = el("input"); input.type = "checkbox"; input.checked = Boolean(layer.initial); input.dataset.layer = layer.id;
+    wrapper.append(input, docText(layer.label)); $("#graph-layers").append(wrapper); layerControls.set(layer.id, input);
+    input.addEventListener("change", () => { syncDetailToggle(); renderGraph(); });
+  }
   let publication = null;
   let selected = null;
   $("#view-mode").textContent = liveReader ? "Following public snapshots" : staticMode ? "Published snapshot" : "Local snapshot";
@@ -447,6 +484,11 @@ if (typeof document !== "undefined") (() => {
   }
 
   function el(name, text) { const item = document.createElement(name); if (text !== undefined) item.textContent = text; return item; }
+  function docText(text) { return document.createTextNode(text); }
+  function syncDetailToggle() {
+    const details = graphLayers.filter(layer => !layer.initial).map(layer => layerControls.get(layer.id).checked);
+    $("#graph-details").checked = details.every(Boolean); $("#graph-details").indeterminate = details.some(Boolean) && !details.every(Boolean);
+  }
   function clearError() { ui.error.hidden = true; ui.error.textContent = ""; }
   function showError(error) { ui.error.textContent = error instanceof Error ? error.message : String(error); ui.error.hidden = false; status(true, "Connection unavailable · showing the last successful snapshot"); }
   function valid(value) { return value && value.schema === "agentic-world-browser/v1" && value.authoritative === false && value.snapshot && value.state && Array.isArray(value.events) && value.history; }
@@ -564,9 +606,11 @@ if (typeof document !== "undefined") (() => {
   }
   function renderGraph(preserve = false) {
     ui.edges.replaceChildren(); ui.nodes.replaceChildren();
-    const graph = graphFromState(payload.state, { details:$("#graph-details").checked });
+    const completeGraph = graphFromState(payload.state);
+    const types = graphLayers.filter(layer => layerControls.get(layer.id).checked).flatMap(layer => layer.types);
+    const graph = filterGraph(completeGraph, { types, place:$("#graph-place").value, query:$("#graph-search").value });
     const archived = objectEntries(payload.state.situations).filter(([, row]) => !activeSituation(row, payload.state.tick)).length;
-    $("#graph-status").textContent = `${graph.nodes.length} entities shown · ${archived} inactive situations hidden`;
+    $("#graph-status").textContent = `${graph.nodes.length} of ${completeGraph.nodes.length} current entities shown · ${archived} inactive situations hidden`;
     const positions = typeof layoutWorldGraph === "function" ? layoutWorldGraph(graph) : new Map();
     const svg = (name, text) => { const item = document.createElementNS("http://www.w3.org/2000/svg", name); if (text !== undefined) item.textContent = text; return item; };
     const bounds = [];
@@ -581,7 +625,7 @@ if (typeof document !== "undefined") (() => {
       const point = positions.get(node.id); if (!point) continue;
       const radius = node.type === "place" ? 42 : 29, offset = node.type === "place" ? 50 : 37;
       bounds.push({ left:point.x - radius, right:point.x + offset + node.label.length * 19, top:point.y - radius, bottom:point.y + radius });
-      const group = svg("g"); group.classList.add("graph-node"); group.dataset.type = node.type; group.setAttribute("transform", `translate(${point.x} ${point.y})`); group.setAttribute("tabindex", "0"); group.setAttribute("role", "button"); group.setAttribute("aria-label", `${node.type}: ${node.label}`);
+      const group = svg("g"); group.classList.add("graph-node"); group.dataset.type = node.type; group.dataset.ref = node.ref; group.setAttribute("transform", `translate(${point.x} ${point.y})`); group.setAttribute("tabindex", "0"); group.setAttribute("role", "button"); group.setAttribute("aria-label", `${node.type}: ${node.label}`);
       const circle = svg("circle"); circle.setAttribute("r", String(radius)); const text = svg("text", node.label); text.setAttribute("x", String(offset)); text.setAttribute("y", "10"); group.append(circle, text);
       const open = () => inspect(node.type, node.ref, node.detail); group.addEventListener("click", open); group.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); } }); ui.nodes.append(group);
     }
@@ -590,7 +634,7 @@ if (typeof document !== "undefined") (() => {
       const top = Math.min(...bounds.map(value => value.top)) - 80, bottom = Math.max(...bounds.map(value => value.bottom)) + 80;
       graphBounds = { left, top, width:right - left, height:bottom - top };
       if (!preserve || !graphViewBox) fitGraph();
-    }
+    } else { graphBounds = null; }
   }
   function setGraphViewBox(box) { ui.graph.setAttribute("viewBox", `${box.left} ${box.top} ${box.width} ${box.height}`); }
   function fitGraph() { if (graphBounds) { graphViewBox = { ...graphBounds }; setGraphViewBox(graphViewBox); } }
@@ -625,7 +669,12 @@ if (typeof document !== "undefined") (() => {
     else { selected = null; ui.inspector.replaceChildren(el("p", "Select a person, place, or graph node. Values are from the current snapshot; event filters do not reconstruct historical state.")); }
     ui.tick.textContent = String(payload.snapshot.tick); ui.revision.textContent = String(payload.snapshot.revision); ui.head.textContent = String(payload.snapshot.event_sequence);
     const history = payload.history; ui.status.textContent = `${history.returned_events} public events shown; ${history.omitted_events} omitted; ${history.metadata_only_events} metadata-only.`;
+    const ticks = payload.events.map(event => tickValue(event.tick)).filter(tick => tick !== null).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
+    $("#history-note").textContent = `${history.returned_events} of ${history.public_events} public native events loaded${ticks.length ? ` · ticks ${ticks[0]}–${ticks[ticks.length - 1]}` : ""}. Each page shows up to 100 matches. World story includes only classified story events.`;
     const directory = stateDirectory(payload.state); ui.people.replaceChildren(...directory.people.map(record => { const box = document.createDocumentFragment(); directoryButton(box, record, "inhabitant"); return box; })); ui.places.replaceChildren(...directory.places.map(record => { const box = document.createDocumentFragment(); directoryButton(box, record, "place"); return box; }));
+    const selectedPlace = $("#graph-place").value;
+    addOptions($("#graph-place"), ["all", ...directory.places.map(row => row.id)], selectedPlace, id => id === "all" ? "All places" : directory.places.find(row => row.id === id).label);
+    if (!directory.places.some(row => row.id === selectedPlace)) $("#graph-place").value = "all";
     evidence(payload.snapshot); controls(ui.storyControls, true, preserve); controls(ui.eventControls, false, preserve); renderGraph(preserve);
   }
   async function load(complete) {
@@ -655,10 +704,16 @@ if (typeof document !== "undefined") (() => {
   for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click", () => selectTab(tab.dataset.tab));
   ui.refresh.addEventListener("click", () => load(false).catch(showError)); ui.history.addEventListener("click", () => load(true).catch(showError));
   ui.fit.addEventListener("click", fitGraph);
-  $("#graph-details").addEventListener("change", () => renderGraph());
+  $("#graph-details").addEventListener("change", () => {
+    for (const layer of graphLayers.filter(layer => !layer.initial)) layerControls.get(layer.id).checked = $("#graph-details").checked;
+    renderGraph();
+  });
+  $("#graph-place").addEventListener("change", () => renderGraph());
+  $("#graph-search").addEventListener("input", () => renderGraph());
   if (staticMode) { ui.refresh.hidden = true; ui.history.hidden = true; }
   if (liveReader) {
     ui.refresh.hidden = false; ui.history.hidden = true;
+    $("#world-archive").hidden = false;
     publicationStatus();
     RustPublicLive.follow(() => load(false).catch(showError), { interval:5000 });
   }

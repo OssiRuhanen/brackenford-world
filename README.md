@@ -17,3 +17,9 @@ for the architecture, a disposable local experiment and a brief for building you
 The guide is built from Markdown in the separate private source repository;
 [`docs/source.json`](docs/source.json) records its exact source identities.
 Documentation publication does not update the world snapshot or activate gameplay.
+
+## Older history
+
+[Older public archive](https://ossiruhanen.github.io/brackenford-world/archive.html) retains the Python-era projection through tick 36429. Open All events and select a tick range; each selection loads up to 500 events. [`archive-source.json`](archive-source.json) binds the retained public HTML and snapshot. Rust live snapshots contain a separate recent-event window, shown with coverage and tick range in the current viewer.
+
+The current map supports entity layers, place filtering and name/ID search.

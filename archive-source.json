@@ -1,0 +1,10 @@
+{
+  "schema": "agentic-world-legacy-public-archive/v1",
+  "public_repository_commit": "36aad4ba8e4a05c6437c08deba5d910a4a25daee",
+  "cutoff_tick": 36429,
+  "source_event_count": 519740,
+  "chunk_count": 570,
+  "archive_html_sha256": "1c4c6804b4d6fd72fe08244748f4e7682df97f46c56f2bc77c32c443bb9be5f1",
+  "public_world_sha256": "275a3deb23857eaec86698112c72e829bd13d6839b922af9fa924b0a09e93d18",
+  "scope": "Historical Python-era public projection, separate from native Rust history"
+}
