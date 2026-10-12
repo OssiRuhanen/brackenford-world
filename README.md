@@ -1,8 +1,10 @@
 # Brackenford World Viewer
 
-Public, read-only world story, map, character journeys, event chronicle and bounded automation status.
+Public, read-only Rust world story, map, people, places and recent events.
 
-Published snapshot: world tick 36429. This is a static snapshot; it is refreshed only by a new publication.
+The viewer follows verified public Rust snapshots automatically while the tab is visible, checking the publication pointer every five seconds. Each changed world head is verified and published by the native read-only publisher; verification and network delivery add to this interval. The bundled fallback is tick 36689. If the connection fails, the viewer keeps the last successful snapshot and shows its age.
+
+[`native-source.json`](native-source.json) records the frontend, API and native binary identities. Snapshot evidence is also available in the viewer. Historical static assets remain in this repository.
 
 Private memories, goals, model prompts, process output, operational logs, source branches and the world engine are not part of this repository.
 

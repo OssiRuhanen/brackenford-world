@@ -1,0 +1,18 @@
+{
+  "schema": "agentic-world-native-pages-publication/v1",
+  "source_commit": "f2ae77b33f52aee3a5ebc7dd017386c4c60df3f9",
+  "api_protected_source_commit": "e4b52a7cde19901b7d9b2e8b1f090bd9f0c34f43",
+  "api_site_source_commit": "702f7ca0abff0b4fca27cc80250c3fb34dda182b",
+  "binary_sha256": "4a9179dabcacb12a59d8713a989535f862a6feade395324f03cae0d088e5a46c",
+  "api_base": "https://brackenford-live-projection.dear-shark-5803.chatgpt.site",
+  "fallback_snapshot": {
+    "chain_sha256": "e44d42e6627761c8b29f4626aef0968c860ff90eaf2e538ed33a3d9cabfd7d64",
+    "event_sequence": 899,
+    "revision": 39,
+    "state_sha256": "d41439d97dbdb1d55128a55a849c48f38c3d53ea8f0bbb2a87f2741991664e40",
+    "tick": 36689,
+    "world_id": "agentic-world-001"
+  },
+  "html_sha256": "ab74b9ae17c22e3e409ef46331c3c778370f142371e211057cfddf5cbfc70917",
+  "generated_at": "2026-10-12T14:34:16.763756+00:00"
+}
