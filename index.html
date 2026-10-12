@@ -2,7 +2,7 @@
 <html lang="en" data-mode="published-live">
 <head>
   <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; connect-src https://brackenford-live-projection.dear-shark-5803.chatgpt.site; script-src 'sha256-eSJCNvADAGZxZXKXxL0b+hosazS44FgBbRkm3Pb6Gyg=' 'sha256-mo6EmcMDyXud8CPOLv9OitUsqBcu7AirbsoiA/VFbgA=' 'sha256-zj4UwGo8VCqvtDZAwlyhj3YSF4/TSV/rTWlYcPIDElc='; style-src 'sha256-Q185DMvX2Z7VqfA6wteti2YLGdZEpcp54ZkGZ20brFI='">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; connect-src https://brackenford-live-projection.dear-shark-5803.chatgpt.site; script-src 'sha256-P3pXL4NjcH7yG9i8dTCOlZoKnQtc79UmrtuAtcz72T8=' 'sha256-mo6EmcMDyXud8CPOLv9OitUsqBcu7AirbsoiA/VFbgA=' 'sha256-zj4UwGo8VCqvtDZAwlyhj3YSF4/TSV/rTWlYcPIDElc='; style-src 'sha256-GVBWmdJ2zpuuDn+oaLL/Yen9Y3sReLIad7VpGIDAIyU='">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Read-only native public view of the Rust world.">
   <title>Rust World Viewer</title>
@@ -46,6 +46,9 @@ select,input { max-width:12rem; padding:.4rem; color:var(--ink); background:var(
 pre { overflow:auto; max-height:13rem; padding:.65rem; background:var(--bg); white-space:pre-wrap; font-size:.72rem; }
 .empty { color:var(--muted); padding:1.5rem .2rem; }
 #graph { display:block; width:100%; min-height:38rem; border:1px solid var(--line); background:#0d1519; }
+.graph-controls { display:flex; flex-wrap:wrap; align-items:center; gap:1rem; margin-top:.8rem; }
+.graph-controls label { display:flex; align-items:center; gap:.5rem; }
+.graph-controls p,.graph-note { color:var(--muted); font-size:.75rem; }
 .graph-edge { stroke:#4b6470; stroke-width:4; }
 .graph-node circle { fill:#1c3038; stroke:#80c8d0; stroke-width:3; }
 .graph-node[data-type="place"] circle { fill:#553f21; stroke:#e6b75e; }
@@ -100,7 +103,12 @@ button:disabled { opacity:.4; cursor:default; }
       <div class="tabs" role="tablist"><button class="tab active" data-tab="story" type="button">World story</button><button class="tab" data-tab="events" type="button">All events</button><button class="tab" data-tab="graph" type="button">Graph</button></div>
       <section id="story-panel" class="panel"><div class="panel-heading"><div><p class="eyebrow">PUBLIC MILESTONES</p><h2>World story</h2></div><p id="history-status"></p></div><div id="story-controls" class="controls"></div><ol id="story-events" class="events"></ol></section>
       <section id="events-panel" class="panel" hidden><div class="panel-heading"><div><p class="eyebrow">PUBLIC EVENT RECORD</p><h2>All events</h2></div></div><div id="event-controls" class="controls"></div><ol id="all-events" class="events"></ol></section>
-      <section id="graph-panel" class="panel" hidden><div class="panel-heading"><div><p class="eyebrow">CURRENT SNAPSHOT</p><h2>World map</h2><p>Arrows show route direction. Schematic layout, not to scale. Scroll to zoom.</p></div><button id="graph-fit" type="button">Fit map</button></div><svg id="graph" viewBox="0 0 1400 900" role="img" aria-label="Current public world graph"><defs><marker id="route-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#a1b6bf"></path></marker></defs><g id="graph-edges"></g><g id="graph-nodes"></g></svg></section>
+      <section id="graph-panel" class="panel" hidden>
+        <div class="panel-heading"><div><p class="eyebrow">CURRENT SNAPSHOT</p><h2>World map</h2><p>Arrows show route direction. Schematic layout, not to scale. Scroll to zoom.</p></div><button id="graph-fit" type="button">Fit map</button></div>
+        <div class="graph-controls"><label><input id="graph-details" type="checkbox"> Show resources, buildings and other details</label><p id="graph-status" role="status"></p></div>
+        <p class="graph-note">Situations are temporary world events, such as market days. Completed and expired situations are hidden.</p>
+        <svg id="graph" viewBox="0 0 1400 900" role="img" aria-label="Current public world graph"><defs><marker id="route-arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#a1b6bf"></path></marker></defs><g id="graph-edges"></g><g id="graph-nodes"></g></svg>
+      </section>
     </section>
     <aside class="inspector"><h2>Inspect</h2><div id="inspector"><p>Select a person, place, or graph node. Values are from the current snapshot; event filters do not reconstruct historical state.</p></div><details><summary>Snapshot evidence</summary><dl id="evidence"></dl></details></aside>
   </main>
@@ -321,8 +329,13 @@ function tickValue(value) {
   if (!/^(0|[1-9][0-9]*)$/.test(text)) return null;
   try { return BigInt(text); } catch (_) { return null; }
 }
+function personName(state, id) { return state?.inhabitants?.[id]?.label || id; }
+function activeSituation(row, tick) {
+  const now = tickValue(tick), opened = tickValue(row?.opened_tick), expires = tickValue(row?.expires_tick);
+  return row?.state?.kind === "open" && now !== null && opened !== null && expires !== null && opened <= now && now < expires;
+}
 
-function graphFromState(state) {
+function graphFromState(state, { details = true } = {}) {
   const nodes = [], edges = [], ids = new Set();
   const addNode = (type, id, row, place) => {
     if (typeof id !== "string" || !id || ids.has(nodeId(type, id))) return;
@@ -347,7 +360,7 @@ function graphFromState(state) {
     addNode("settlement", id, row, row?.place);
     if (typeof row?.store === "string" && ids.has(nodeId("store", row.store))) edges.push({ id:`settlement-store:${id}:${row.store}`, source:nodeId("settlement", id), target:nodeId("store", row.store), relation:"uses_store" });
   }
-  for (const [id, row] of objectEntries(state?.situations)) addNode("situation", id, row, row?.place);
+  for (const [id, row] of objectEntries(state?.situations)) if (activeSituation(row, state.tick)) addNode("situation", id, row, row?.place);
   for (const [id, row] of objectEntries(state?.crop_plots)) addNode("crop", id, row, state.resource_nodes?.[id]?.place);
   for (const [id, row] of objectEntries(state?.weather)) {
     addNode("weather", id, row);
@@ -376,7 +389,9 @@ function graphFromState(state) {
   for (const [left, relations] of objectEntries(community?.relations)) {
     for (const [right, relation] of objectEntries(relations)) link(nodeId("faction", left), nodeId("faction", right), relation);
   }
-  return { nodes, edges, initial_place_ids:[] };
+  const visibleNodes = details ? nodes : nodes.filter(node => ["place", "inhabitant", "situation"].includes(node.type));
+  const visibleIds = new Set(visibleNodes.map(node => node.id));
+  return { nodes:visibleNodes, edges:edges.filter(edge => visibleIds.has(edge.source) && visibleIds.has(edge.target)), initial_place_ids:[] };
 }
 
 function filterEvents(events, filter = {}) {
@@ -399,7 +414,7 @@ function stateDirectory(state) {
   return { people, places };
 }
 
-if (typeof module !== "undefined") module.exports = { graphFromState, filterEvents, stateDirectory, tickValue };
+if (typeof module !== "undefined") module.exports = { graphFromState, filterEvents, stateDirectory, tickValue, personName, activeSituation };
 
 if (typeof document !== "undefined") (() => {
   const $ = selector => document.querySelector(selector);
@@ -465,7 +480,7 @@ if (typeof document !== "undefined") (() => {
   function relatedAtPlace(place) {
     const result = [];
     const collections = [["inhabitants", "inhabitant"], ["resource_nodes", "resource"], ["construction_sites", "site"], ["shared_stores", "store"], ["infrastructure", "infrastructure"], ["settlements", "settlement"], ["situations", "situation"]];
-    for (const [collection, type] of collections) for (const [id, row] of objectEntries(payload.state[collection])) if (row?.place === place) result.push(`${label(type)}: ${row.label || row.definition || id}`);
+    for (const [collection, type] of collections) for (const [id, row] of objectEntries(payload.state[collection])) if (row?.place === place && (type !== "situation" || activeSituation(row, payload.state.tick))) result.push(`${label(type)}: ${row.label || row.definition || id}`);
     for (const [id, row] of objectEntries(payload.state.crop_plots)) if (payload.state.resource_nodes[id]?.place === place) result.push(`crop: ${row.definition || id}`);
     for (const [id, row] of objectEntries(payload.state.weather)) if (row.places.includes(place)) result.push(`weather: ${id}`);
     return result.sort();
@@ -503,7 +518,7 @@ if (typeof document !== "undefined") (() => {
   function eventItem(event) {
     const item = el("li"); item.className = "event";
     item.append(el("div", `Tick ${event.tick} · #${event.sequence} · ${label(event.kind)}`));
-    const actor = el("div", `Actor: ${event.actor ?? "system"}${event.participants?.length ? ` · Participants: ${event.participants.join(", ")}` : ""}`); actor.className = "meta"; item.append(actor);
+    const actor = el("div", `Actor: ${event.actor === null ? "system" : personName(payload.state, event.actor)}${event.participants?.length ? ` · Participants: ${event.participants.map(id => personName(payload.state, id)).join(", ")}` : ""}`); actor.className = "meta"; item.append(actor);
     if (event.detail) item.append(el("p", event.detail));
     else if (typeof event.data.text === "string") item.append(el("p", event.data.text));
     if (event.metadata_only) { const note = el("p", "Metadata-only public event."); note.className = "meta"; item.append(note); }
@@ -523,12 +538,12 @@ if (typeof document !== "undefined") (() => {
     const priorInputs = preserve ? [...container.querySelectorAll("input")].map(item => item.value) : [];
     const previousTick = container.dataset.tick;
     container.replaceChildren();
-    const people = ["all", ...new Set([...stateDirectory(payload.state).people.map(record => record.id), ...payload.events.flatMap(event => event.participants)])].sort();
+    const people = ["all", ...[...new Set([...stateDirectory(payload.state).people.map(record => record.id), ...payload.events.flatMap(event => event.participants)])].sort((a, b) => personName(payload.state, a).localeCompare(personName(payload.state, b)))];
     const kinds = ["all", ...new Set(payload.events.map(event => event.kind))].sort();
     const categories = ["all", ...new Set(payload.events.filter(event => event.story).map(event => event.story.category))].sort();
     const person = el("select"), kind = el("select"), category = el("select"), from = el("input"), to = el("input");
     from.type = to.type = "text"; from.inputMode = to.inputMode = "numeric"; from.pattern = to.pattern = "[0-9]*"; from.value = "0"; to.value = String(payload.snapshot.tick);
-    addOptions(person, people, "all"); addOptions(kind, kinds, "all"); addOptions(category, categories, "all");
+    addOptions(person, people, "all", id => id === "all" ? "All people" : personName(payload.state, id)); addOptions(kind, kinds, "all"); addOptions(category, categories, "all");
     const importance = el("select"); addOptions(importance, ["all", "highlight"], "all", value => value === "all" ? "All milestones" : "Highlights");
     for (const [index, select] of [person, kind, category, importance].entries()) if (priorSelects[index] && [...select.options].some(option => option.value === priorSelects[index])) select.value = priorSelects[index];
     if (priorInputs.length === 2) { from.value = priorInputs[0]; to.value = priorInputs[1] === previousTick ? String(payload.snapshot.tick) : priorInputs[1]; }
@@ -549,7 +564,9 @@ if (typeof document !== "undefined") (() => {
   }
   function renderGraph(preserve = false) {
     ui.edges.replaceChildren(); ui.nodes.replaceChildren();
-    const graph = graphFromState(payload.state);
+    const graph = graphFromState(payload.state, { details:$("#graph-details").checked });
+    const archived = objectEntries(payload.state.situations).filter(([, row]) => !activeSituation(row, payload.state.tick)).length;
+    $("#graph-status").textContent = `${graph.nodes.length} entities shown · ${archived} inactive situations hidden`;
     const positions = typeof layoutWorldGraph === "function" ? layoutWorldGraph(graph) : new Map();
     const svg = (name, text) => { const item = document.createElementNS("http://www.w3.org/2000/svg", name); if (text !== undefined) item.textContent = text; return item; };
     const bounds = [];
@@ -638,6 +655,7 @@ if (typeof document !== "undefined") (() => {
   for (const tab of document.querySelectorAll(".tab")) tab.addEventListener("click", () => selectTab(tab.dataset.tab));
   ui.refresh.addEventListener("click", () => load(false).catch(showError)); ui.history.addEventListener("click", () => load(true).catch(showError));
   ui.fit.addEventListener("click", fitGraph);
+  $("#graph-details").addEventListener("change", () => renderGraph());
   if (staticMode) { ui.refresh.hidden = true; ui.history.hidden = true; }
   if (liveReader) {
     ui.refresh.hidden = false; ui.history.hidden = true;
