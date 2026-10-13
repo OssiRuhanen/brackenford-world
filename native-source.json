@@ -1,22 +1,23 @@
 {
   "schema": "agentic-world-native-pages-publication/v1",
-  "source_commit": "ccb819c7d2adb7e335e5507f0c5a92d6bf106a09",
+  "source_commit": "b9786cace1e6c282027315ff6beafcaa740dcd91",
   "api_protected_source_commit": "e4b52a7cde19901b7d9b2e8b1f090bd9f0c34f43",
   "api_site_source_commit": "702f7ca0abff0b4fca27cc80250c3fb34dda182b",
-  "binary_sha256": "4a9179dabcacb12a59d8713a989535f862a6feade395324f03cae0d088e5a46c",
+  "binary_sha256": "8ec25b1b8b42944bdbeef86a494895fd3081e09dcfa35a4d96e184f4288da0fa",
   "api_base": "https://brackenford-live-projection.dear-shark-5803.chatgpt.site",
   "fallback_snapshot": {
-    "chain_sha256": "e44d42e6627761c8b29f4626aef0968c860ff90eaf2e538ed33a3d9cabfd7d64",
-    "event_sequence": 899,
-    "revision": 39,
-    "state_sha256": "d41439d97dbdb1d55128a55a849c48f38c3d53ea8f0bbb2a87f2741991664e40",
-    "tick": 36689,
+    "chain_sha256": "17c185a1f3a809879c11f3c4328ffce36abb96163d20654a42bc19b1898a445f",
+    "event_sequence": 1363,
+    "revision": 60,
+    "state_sha256": "885bf2a8e10320bf0988c5143fee8679c7ae11e1d8feca68f6e101f1cec5456e",
+    "tick": 36710,
     "world_id": "agentic-world-001"
   },
-  "html_sha256": "31349fd06c9f2736d081795191c6ea269615b6a81c4396932e15266905434cb7",
-  "generated_at": "2026-10-12T15:32:09.702975+00:00",
-  "previous_frontend_source_commit": "f2ae77b33f52aee3a5ebc7dd017386c4c60df3f9",
-  "fallback_publication_snapshot_id": "21c656a576dfd119253c717c88aa75821cbf8c69d5319e4f9063331851410747",
-  "protected_frontend_source_commit": "9375177362223ddd7cb61a956e0bce6d49706fbd",
-  "archive_url": "archive.html"
+  "html_sha256": "7a34ca72c81ec7224ca1df34e806da3ddb06fec76a4c5148bb8b861ff939871c",
+  "generated_at": "2026-10-13T20:00:36.253403+00:00",
+  "previous_frontend_source_commit": "ccb819c7d2adb7e335e5507f0c5a92d6bf106a09",
+  "fallback_publication_snapshot_id": "8e49a06d9bf1bddd2949e349550b0fe4353ba3bad5c2818294b91c07b6a269d5",
+  "protected_frontend_source_commit": "b9786cace1e6c282027315ff6beafcaa740dcd91",
+  "archive_url": "archive.html",
+  "fallback_publisher_source_commit": "18d780ae70e3f4bab065259f8c7bc47287964450"
 }
